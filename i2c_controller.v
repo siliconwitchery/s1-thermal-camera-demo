@@ -31,26 +31,26 @@ module i2c_controller (
     inout  wire sda,
     output reg scl
 );
-    // List of I2C engine states
+    // List of possible I2C states
     localparam STATE_IDLE = 0;          // Idle
     localparam STATE_START = 1;         // Send start bit
     localparam STATE_ADDR = 2;          // Send address
     localparam STATE_RW = 3;            // Send read/write bit
     localparam STATE_WAIT_PACK = 4;     // Waiting for peripheral ack
-    localparam STATE_POST_ACK_HOLD = 41;
-    localparam STATE_SEND_CACK = 5;     // Controller responds with ack
-    localparam STATE_READ_DATA = 6;     // Peripheral sending data
-    localparam STATE_SEND_DATA = 7;     // Controller sending data
-    localparam STATE_STOP = 8;          // Stop bit
+    localparam STATE_POST_ACK_HOLD = 5; // Required to prevent an extra clock. Might remove later
+    localparam STATE_SEND_CACK = 6;     // Controller responds with ack
+    localparam STATE_READ_DATA = 7;     // Peripheral sending data
+    localparam STATE_SEND_DATA = 8;     // Controller sending data
+    localparam STATE_STOP = 9;          // Stop bit
 
     // State machine variable
     reg [7:0] state = STATE_IDLE;
+
+    // We can only change state on entry, hence we need an extra variable. Else the SCL timing will be wrong
     reg [7:0] next_state = STATE_IDLE;
 
-    // Local counter and clock enable
+    // Local counter for shifting data to and from the SDA line
     reg [7:0] counter = 0;
-    reg scl_enable = 0;
-    reg scl_stretch = 0;
 
     // Enables transmit mode of the SDA
     reg sda_oe = 0;
@@ -110,6 +110,7 @@ module i2c_controller (
         // This is the state transition logic
         end else begin
 
+            // This is where we set the new state. Not at the exit, but entry
             state <= next_state;
 
             case (state)
@@ -256,6 +257,7 @@ module i2c_controller (
                     end
                 end
 
+                // TODO finish this
                 STATE_READ_DATA: begin
                     sda_oe <= 0;
                     received_data[counter] <= sda_received;
@@ -267,6 +269,7 @@ module i2c_controller (
                     end
                 end
 
+                // TODO finish this
                 STATE_SEND_CACK: begin
                     sda_oe <= 1;
                     sda_transmit <= 1;
