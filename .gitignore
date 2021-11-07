@@ -1,0 +1,6 @@
+# Don't include build output folders
+.build
+.sim
+
+# Don't keep local vscode settings
+.vscode/settings.json

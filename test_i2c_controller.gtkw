@@ -1,0 +1,56 @@
+[*]
+[*] GTKWave Analyzer v3.3.107 (w)1999-2020 BSI
+[*] Sun Nov  7 13:33:00 2021
+[*]
+[dumpfile] "/Users/raj/projects/i2c-verilog/.sim/test_i2c_controller.lxt"
+[dumpfile_mtime] "Sun Nov  7 13:32:31 2021"
+[dumpfile_size] 96631
+[savefile] "/Users/raj/projects/i2c-verilog/test_i2c_controller.gtkw"
+[timestart] 0
+[size] 1440 790
+[pos] -1 -1
+*-25.404898 69800000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] test_i2c_controller.
+[sst_width] 193
+[signals_width] 223
+[sst_expanded] 1
+[sst_vpaned_height] 272
+@28
+test_i2c_controller.i2c_controller.clk[0]
+test_i2c_controller.reset[0]
+@24
+test_i2c_controller.i2c_controller.next_state[7:0]
+test_i2c_controller.i2c_controller.state[7:0]
+@200
+-
+-Outputs
+@28
+test_i2c_controller.i2c_controller.sda_oe[0]
+test_i2c_controller.i2c_controller.sda[0]
+test_i2c_controller.i2c_controller.scl[0]
+@200
+-
+-Controller interface
+@22
+test_i2c_controller.address[7:0]
+@28
+test_i2c_controller.write_mode[0]
+@22
+test_i2c_controller.transmit_data[7:0]
+@28
+test_i2c_controller.write_pending[0]
+@29
+test_i2c_controller.i2c_controller.start_transfer[0]
+@22
+test_i2c_controller.received_data[7:0]
+@28
+test_i2c_controller.read_pending[0]
+test_i2c_controller.busy[0]
+@200
+-
+-Peripheral ACKs
+@28
+test_i2c_controller.sda_ack_en[0]
+test_i2c_controller.sda_ack_val[0]
+[pattern_trace] 1
+[pattern_trace] 0
