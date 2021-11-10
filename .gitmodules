@@ -1,0 +1,3 @@
+[submodule "s1-sdk"]
+	path = s1-sdk
+	url = https://github.com/siliconwitchery/s1-sdk.git
