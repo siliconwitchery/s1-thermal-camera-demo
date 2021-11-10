@@ -1,74 +1,77 @@
 // This gives us a 50MHz tik-tok
 `timescale 10ns / 10ns
 
+// 2400ns equals a single SCL clock period
 `define SCL_PERIOD 240
 
-// Include the I2C controller, and clock divider
+// Include the I2C controller, and clock divider modules
 `include "i2c_controller.v"
 `include "clock_divider.v"
 
 module test_i2c_controller;
 
-    // Generate a 5MHz clock (the real chip is 6MHz)
+    // Generate a 25MHz clock (Note that the real chip will be 24MHz)
     reg hf_clk = 0;
     initial begin : clk_25MHz
         forever #2 hf_clk <= ~hf_clk;
     end
 
+    // The I2C clock will run at 800kHz (twice the I2C frequency)
+    wire i2c_clock;
+
+    // Global reset line
     reg reset;
 
-    // The I2C output wires
+    // The I2C wires
     wire scl;
     wire sda_in;
     wire sda_out;
     wire sda_oe;
 
-    // Local I2C clock wire (400kHz)
-    wire i2c_clock;
-
-    // Address, RX and TX registers
-    reg [7:0] address; 
-    wire [7:0] received_data;
+    // Address, TX and RX data registers.
+    reg [6:0] address; 
     reg [7:0] transmit_data; 
+    wire [7:0] received_data;
 
-    // Setting this high takes controller into write mode. Read if 0
-    reg write_mode;
+    // Option for writing or reading. Write if high, read otherwise
+    reg read_write;
 
-    // Set this to send multiple data bytes
-    reg write_pending;
+    // Flag to begin the transfer process
+    reg enable_transfer;
 
-    // Flag to start the transfer
-    reg start_transfer;
+    // Register for pushing out simulated peripheral data
+    reg sda_peripheral_data = 'bZ;
 
-    // SDA ACK assignment from peripheral
+    // Flag for simulated peripheral ack
     reg sda_peripheral_ack = 0;
-    assign sda_in = sda_peripheral_ack ? 0 : 'bZ;
+
+    // This mechanism issues the peripheral ack or data
+    assign sda_in = sda_peripheral_ack ? 0 : sda_peripheral_data;
     
-    // Instantiate the 50MHz-400kHz clock divider
+    // Instantiate the 24MHz-800kHz clock divider (Note we run it here at 25MHz)
     clock_divider clock_divider (
         .sys_clk(hf_clk),
         .slow_clk(i2c_clk)
     );
 
-    // Instantiate the unit under test
+    // Instantiate the I2C controller
     i2c_controller i2c_controller (
         .clk(i2c_clk),
         .reset(reset),
-        .busy(busy),
+        .ack(ack),
+        .nack(nack),
         .address(address),
-        .write_mode(write_mode),
+        .read_write(read_write),
         .transmit_data(transmit_data),
         .received_data(received_data),
-        .write_pending(write_pending),
-        .read_pending(read_pending),
-        .start_transfer(start_transfer),
+        .enable_transfer(enable_transfer),
         .sda_in(sda_in),
         .sda_out(sda_out),
         .sda_oe(sda_oe),
         .scl(scl)
     );
 
-    // Where to save the output file for GTKWave
+    // This is where the simulation output file is saved
     initial begin
         $dumpfile(".sim/test_i2c_controller.lxt");
         $dumpvars(0, test_i2c_controller);
@@ -77,42 +80,108 @@ module test_i2c_controller;
     // The test routine is here
     initial begin
 
-        // Reset the controller
-        reset = 1;
-        # (`SCL_PERIOD * 3);
-        
-        // Test parameters and start of the test
-        transmit_data = 8'hAB;
-        address = 8'h9B;
-        write_mode = 1;
-        write_pending = 1;
-        start_transfer = 1;
-        reset = 0;
+        //////////////////////////
+        //      WRITE TEST      //
+        //////////////////////////
 
-        // Issue the first peripheral ack (address) 
+        // Reset the controller and wait a bit (just for a nice visual gap in the output waveform)
+        reset = 1;
+        # `SCL_PERIOD;
+        reset = 0;
+        # (`SCL_PERIOD * 2);
+        
+        // Test writing 2 bytes to a device with address 0x55
+        address = 'h55;
+        transmit_data = 'hDB;
+        read_write = 0;
+        enable_transfer = 1;
+
+        // After some time, issue the first peripheral ack for address
         # (`SCL_PERIOD * 10.25);
         sda_peripheral_ack = 1;
         # `SCL_PERIOD
         sda_peripheral_ack = 0;
         
-        // Issue the second peripheral ack (data) and set new data
+        // Issue the second peripheral ack for data, and then set new data
         # (`SCL_PERIOD * 9);
         sda_peripheral_ack = 1;
-        transmit_data = 8'h55;
+        transmit_data = 'h6C;
         # `SCL_PERIOD
         sda_peripheral_ack = 0;
 
-        // Issue the third peripheral ack (data), clear write pending and stop transfer
+        // Issue the third peripheral ack for data and clear write pending flag to end the transfer
         # (`SCL_PERIOD * 9);
         sda_peripheral_ack = 1;
-        write_pending = 0;
-        start_transfer = 0;
+        enable_transfer = 0;
         # `SCL_PERIOD
         sda_peripheral_ack = 0;
+
+        // Wait a couple periods before starting the read operation (just for a visual gap)
+        # `SCL_PERIOD;
+        read_write = 1;
+        # `SCL_PERIOD;
+
+        /////////////////////////
+        //      READ TEST      //
+        /////////////////////////
+
+        // Now read 2 bytes from device address 0x2A
+        address = 8'h2A;
+        enable_transfer = 1;
+
+        // After some time we should get the address ack from the peripheral
+        # (`SCL_PERIOD * 10.5);
+        sda_peripheral_ack = 1;
+        # `SCL_PERIOD
+        sda_peripheral_ack = 0;
+
+        // TODO this point on needs fixing
+
+        // Issue simulated data from the peripheral on the SDA
+        sda_peripheral_data = 1;
+        # `SCL_PERIOD
+        sda_peripheral_data = 0;
+        # `SCL_PERIOD
+        sda_peripheral_data = 1;
+        # `SCL_PERIOD
+        sda_peripheral_data = 1;
+        # `SCL_PERIOD
+        sda_peripheral_data = 0;
+        # `SCL_PERIOD
+        sda_peripheral_data = 0;
+        # `SCL_PERIOD
+        sda_peripheral_data = 1;
+        # `SCL_PERIOD
+        sda_peripheral_data = 1;
+        # `SCL_PERIOD
+        sda_peripheral_data = 'bZ;
+
+        // Issue second set of data after the controller sends an ack
+        # (`SCL_PERIOD * 2)
+        sda_peripheral_data = 0;
+        # `SCL_PERIOD
+        sda_peripheral_data = 1;
+        # `SCL_PERIOD
+        sda_peripheral_data = 1;
+        # `SCL_PERIOD
+        sda_peripheral_data = 1;
+        # `SCL_PERIOD
+        sda_peripheral_data = 0;
+        # `SCL_PERIOD
+        sda_peripheral_data = 1;
+        # `SCL_PERIOD
+        sda_peripheral_data = 0;
+        # `SCL_PERIOD
+        sda_peripheral_data = 0;
+        # `SCL_PERIOD
+        sda_peripheral_data = 'bZ;
+
+        // Release the enable line to stop transfer and wait for stop sequence
+        enable_transfer = 0;
+        # `SCL_PERIOD
 
         // Done!
         # (`SCL_PERIOD * 3);
-
         $finish;
     end
 

@@ -1,124 +1,119 @@
 module i2c_controller (
-    // Main clock should be 400kHz
+    // Module clock should be double the desired I2C Clock frequency.
     input wire clk,
 
-    // Resets everything
+    // Resets everything.
     input wire reset,
 
-    // When this value is low, the data can be read or written
-    output reg busy,
+    // Goes high after a successful data transfer. On this rising edge, data may
+    // be written to, or read from on the transmit_data and received_data lines.
+    output reg ack,
 
-    // 8bit device address. LSB is ignored
-    input wire [7:0] address,
+    // If this goes high, it means that the peripheral did not ack the address
+    // or the data.
+    output reg nack,
 
-    // High for write, low for read
-    input wire write_mode,
+    // The 7 bit peripheral device address.
+    input wire [6:0] address,
 
-    // The data in and out
+    // Setting this high will put the controller into read mode, otherwise write.
+    input wire read_write,
+
+    // The data in and out interface to the module. Only valid to read or write
+    // on the rising edge of ack.
     input wire [7:0] transmit_data,
     output reg [7:0] received_data,
 
-    // If this line is high, the controller will send more data after the first one when the peripheral acks
-    input wire write_pending,
+    // Set this line high to start the transfer, and keep it high for continuous
+    // reads or writes.
+    input wire enable_transfer,
 
-    // This line goes high when the peripheral sends an ack in read mode, signifying that there is more data to read
-    output reg read_pending,
-
-    // Set this line high to start the transfer
-    input wire start_transfer,
-
-    // The real I2C lines
+    // The I2C lines. SDA in, out, and oe should be routed to a tristate block.
     input  wire sda_in,
     output reg sda_out,
     output reg sda_oe,
     output reg scl
 );
-    // List of possible I2C states
-    localparam STATE_IDLE = 0;          // Idle
-    localparam STATE_START = 1;         // Send start bit
-    localparam STATE_ADDR = 2;          // Send address
-    localparam STATE_RW = 3;            // Send read/write bit
-    localparam STATE_WAIT_PACK = 4;     // Waiting for peripheral ack
-    localparam STATE_POST_ACK_HOLD = 5; // Required to prevent an extra clock. Might remove later
-    localparam STATE_SEND_CACK = 6;     // Controller responds with ack
-    localparam STATE_READ_DATA = 7;     // Peripheral sending data
-    localparam STATE_SEND_DATA = 8;     // Controller sending data
-    localparam STATE_STOP = 9;          // Stop bit
+    // List of the I2C controller states
+    localparam STATE_IDLE = 0;          // Idle state
+    localparam STATE_START = 1;         // Sends the start sequence
+    localparam STATE_ADDR = 2;          // Sends the 7 address bits
+    localparam STATE_RW = 3;            // Sends the read or write bit
+    localparam STATE_WAIT_PACK = 4;     // Checks for the peripheral ACK
+    localparam STATE_PREPARE_DATA = 5;  // Prepares data to send out
+    localparam STATE_SEND_DATA = 6;     // Sends data bits to the peripheral
+    localparam STATE_READ_DATA = 7;     // Reads data bits from the peripheral
+    localparam STATE_SEND_CACK = 8;     // Prepares the controller ACK response
+    localparam STATE_RELEASE_CACK = 9;  // Decides on repeated reads
+    localparam STATE_STOP = 10;         // Sends the stop sequence
 
     // State machine variable
-    reg [7:0] state = STATE_IDLE;
+    reg [4:0] state = STATE_IDLE;
 
-    // We can only change state on entry, hence we need an extra variable. Else the SCL timing will be wrong
-    // TODO see if we can get rid of this
-    reg [7:0] next_state = STATE_IDLE;
+    // A separate state variable is needed because SDA and SCL are driven from
+    // separate always blocks. We need to preserve the current state until the
+    // state machine makes the transition into the new state.
+    reg [4:0] next_state = STATE_IDLE;
 
-    // Local counter for shifting data to and from the SDA line
-    // TODO make this shift
-    reg [7:0] counter = 0;
+    // Three bit counter for counting bits pushed or pulled on SDA
+    reg [3:0] counter = 0;
 
-    // Internal address reg
-    reg [7:0] i_address = 0;
-    reg [7:0] i_transmit_data = 0;
-
-    // Internal TX/RX buffers that sit just before the SDA line
-    // TODO fix this comment
-    reg sda_received = 0;
-
-    // Set SDA either as in or out depending on OE
-    // TODO fix this for yosys
-    // assign sda = sda_oe ? sda_out : 1'b0;
-    // assign sda = sda_oe ? sda_out : 1'bZ;
-
-    // Inbound SDA is only valid on a positive SCL edge
-    always @(posedge scl) begin
-        sda_received = sda_in;
-    end
-
-    // This block generates SCL under the different states
-    // TODO FIX THIS
+    // This block generates the SCL depending on which state is active
     always @(negedge clk || reset) begin
 
-        // When we're in reset, IDLE, Start or Stop, we keep scl high
-        if ((reset == 1)
-         || (state == STATE_IDLE) 
-         || (state == STATE_START)
-         || (state == STATE_STOP)) begin
+        // When we're in reset, IDLE, Start or Stop, we should keep SCL high
+        if (reset == 1 || 
+            state == STATE_IDLE || 
+            state == STATE_START || 
+            state == STATE_STOP) begin
+
             scl <= 1;
 
-        // Keep clock low while we switch the pin direction
-        end else if ((state == STATE_POST_ACK_HOLD)) begin
+        end
+
+        // Keep low while we're waiting for new data, and CACK is being issued
+        else if (state == STATE_PREPARE_DATA || 
+                 state == STATE_SEND_CACK) begin
+
             scl <= 0;
 
-        // Otherwise toggle the clock
-        end else begin
-            scl <= ~scl;
         end
+
+        // Otherwise toggle the SCL line
+        else begin
+
+            scl <= ~scl;
+
+        end
+
     end
 
-    // This block handles the different states of the I2C logic 
-    always @(posedge clk or posedge reset) begin
+    // This block handles the different states of the I2C controller logic
+    always @(posedge clk || reset) begin
         
         // If in reset, keep outputs high and reset everything
         if(reset == 1) begin
 
-            // In reset, we keep state as IDLE
+            // In reset, we keep the state variables in IDLE
             state <= STATE_IDLE;
             next_state <= STATE_IDLE;
 
-            // SDA is high impedance
+            // ACK and NACK is cleared
+            ack <= 0;
+            nack <= 0;
+
+            // SDA output is disabled
             sda_oe <= 0;
 
-            // Read register and pending is cleared
-            received_data <= 8'h00;
-            read_pending <= 0;
+            // And the received_data register is cleared
+            received_data <= 0;
 
-            // Busy is high
-            busy <= 1;
+        end
 
-        // This is the state transition logic
-        end else begin
+        // Otherwise run the I2C controller logic if not in reset
+        else begin
 
-            // This is where we set the new state. Not at the exit, but entry
+            // This is where we set the new state
             state <= next_state;
 
             case (state)
@@ -126,31 +121,23 @@ module i2c_controller (
                 // Idle state
                 STATE_IDLE: begin
 
-                    // In idle, we keep SDA high impedance
-                    sda_oe <= 0;
+                    // TODO maybe we want a flag to tell us that the controller is idle?
 
-                    // Signify not busy
-                    busy <= 0;
-
-                    // Start transfer when this flag goes high
-                    if (start_transfer == 1) next_state <= STATE_START;
+                    // Start transfer when enable goes high
+                    if (enable_transfer == 1) next_state <= STATE_START;
                 
                 end
 
-                // Issues the start sequence
+                // Sends the start sequence
                 STATE_START: begin
 
-                    // Engage drive to SDA and send low for start sequence
-                    sda_oe = 1;
+                    // Engage SDA to output and set it as low
+                    sda_oe <= 1;
                     sda_out <= 0;
 
-                    // Set counter to push out 7 addr bits and 1 RW bit
+                    // Set counter to push out the 7 address bits
                     counter <= 6;
                     next_state <= STATE_ADDR;
-                    i_address <= address;
-
-                    // Flag that the controller is busy
-                    busy <= 1;
 
                 end
 
@@ -160,31 +147,26 @@ module i2c_controller (
                     // Only change data on SDA when SCL is low
                     if (scl == 0) begin
 
-                        // Push out address bits and decrement counter.
+                        // Push out the address bits on SDA
+                        sda_out <= address[counter];
 
-                        // sda_out <= address[counter];
-                        // counter <= counter - 1;
-
-                        //////
-                        sda_out <= i_address[7];
-                        i_address <= {i_address[6:0], 1'b0};
-                        //////
-
-                        // The last bit is R/W so we skip it and go to the RW state
+                        // On the final bit, we go to the RW state
                         if (counter == 0) next_state <= STATE_RW;
-                        else counter <= counter - 'b1;
+
+                        // Otherwise decrement the counter until we reach 0
+                        else counter <= counter - 1;
                     
                     end
                 end
 
-                // Sends the read/write bit
+                // Sends the read or write bit
                 STATE_RW: begin
 
                     // Only change data on SDA when SCL is low
                     if (scl == 0) begin
 
-                        // If write mode, we send a 0, otherwise send a 1
-                        sda_out <= write_mode ? 0 : 1;
+                        // Read issues a high bit, and write is low
+                        sda_out <= read_write ? 1 : 0;
 
                         // Then wait for the peripheral acknowledgement
                         next_state <= STATE_WAIT_PACK;
@@ -192,30 +174,46 @@ module i2c_controller (
                     end
                 end
 
-                // Waiting for the peripheral to acknowledge the controller
+                // Checks for the peripheral ACK
                 STATE_WAIT_PACK: begin
 
-                    // Disable drive to SDA in order for the peripheral to pull the line
+                    // Disable drive to SDA to receive the ACK
                     sda_oe <= 0;
-
-                    // At this point, the user may update the data register
-                    busy <= 0;
 
                     // The data is only valid when SCL is high
                     if (scl == 1) begin
 
-                        // Low on SDA means that the peripheral acknowledged us
-                        // and write pending, we go send data
-                        if (sda_received == 0 && write_pending == 1) begin
+                        // Reading low on SDA means that the peripheral 
+                        // acknowledged us
+                        if (sda_in == 0) begin
 
-                            // A single cycle delay to allow the 
-                            next_state <= STATE_POST_ACK_HOLD;
+                            // Flag that the ACK happened, user should also
+                            // prepare the data on this rising edge
+                            ack <= 1;
+
+                            // If enabled to do so, we can send data
+                            if (enable_transfer == 1) begin
+
+                                // Set counter to read/write 8 bits
+                                counter <= 7;
+
+                                // Go to read or write accordingly
+                                next_state <= read_write ? STATE_READ_DATA 
+                                                         : STATE_PREPARE_DATA;
+
+                            end
+
+                            // Otherwise stop
+                            else begin
+                                next_state <= STATE_STOP;
+                            end
 
                         end
 
-                        // If we don't see an acknowledgement, then stop
+                        // If we don't get an acknowledgement, then stop
                         else begin
                          
+                            nack <= 1;
                             next_state <= STATE_STOP;
                             
                         end
@@ -223,95 +221,120 @@ module i2c_controller (
                     end
                 end
 
-                // Pause required for SDA to switch back to transmit mode and peripheral
-                // to prepare for sending data. This is shown in the I2C spec
-                STATE_POST_ACK_HOLD: begin
-
-                    // Now we set busy again because we're about to push out data
-                    busy <= 1;
+                // We need to send out the first bit here otherwise there'll be
+                // a delay of one SCL cycle. We can't set the output at exactly
+                // the same time as the state machine enters the next state
+                STATE_PREPARE_DATA: begin
+                
+                    // Clear the ack
+                    ack <= 0;
                     
-                    // TODO there can be an interrupt here where the peripheral says it's ready
-                    // If write mode we go to the send state
-                    if (write_mode == 1) begin
+                    // Enable the output and push out the MSB
+                    sda_oe <= 1;
+                    sda_out <= transmit_data[7];
 
-                        // If outbound data is pending, we send it
-                        if (write_pending == 1) begin
-
-                            // We need to set SDA to transmit and issue the first bit here
-                            sda_oe <= 1;
-                            i_transmit_data <= transmit_data;
-                            sda_out <= i_transmit_data[7];
-                            next_state <= STATE_SEND_DATA;
-
-                        end
-
-                        // Otherwise we are done
-                        else next_state <= STATE_STOP;
-
-                    end
-
-                    // Otherwise we go to read mode
-                    else begin
-                        next_state <= STATE_READ_DATA;
-                    end
-
-                    // Set counter to read/write 8 bits
+                    // Adjust the counter and send out the remaining 7 bits
                     counter <= 6;
+                    next_state <= STATE_SEND_DATA;
 
                 end
 
-                // Sending 8 bits of data
+                // Sends the remaining 7 data bits to the peripheral
                 STATE_SEND_DATA: begin
-                    
-                    // Now we only need to change the data on SDA when SCL is low
+
+                    // We can only change the data when SCL is low
                     if (scl == 0) begin
 
-                        // Pre decrement the counter and then send data. Ensure SDA is driven
-                        // sda_out <= transmit_data[--counter];
-                        // sda_out <= transmit_data[counter];
-                        // counter <= counter - 1;
-                        // TODO fix this
+                        // Send 7 remaining data bits
+                        sda_out <= transmit_data[counter];
 
-                    //////
-                        sda_out <= i_transmit_data[6];
-                        i_transmit_data <= {i_transmit_data[6:0], 1'b0};
-                        //////
-
-                        // On the last bit we wait for another ack from the peripheral
+                        // On the last bit we return to wait for an ack
                         if (counter == 0) next_state <= STATE_WAIT_PACK;
-                        else counter <= counter - 'b1;
+
+                        // Otherwise decrement the counter
+                        else counter <= counter - 1;
 
                     end
                 end
 
-                // TODO finish this
+                // Reads 7 data bits from the peripheral
                 STATE_READ_DATA: begin
+                    
+                    // Clear the ACK
+                    ack <= 0;
+
+                    // Enable SDA to be input
                     sda_oe <= 0;
-                    received_data[counter] <= sda_received;
-                    if (counter == 0) begin
-                        next_state <= STATE_SEND_CACK;
-                        // TODO flag that the data is ready and can be read
-                    end else begin
-                            counter = counter - 1;
+
+                    // Data is only valid when SCL is high
+                    if (scl == 1) begin
+
+                        // Pull in 8 data bits
+                        received_data[counter] <= sda_in;
+
+                        // Once we hit 0, the controller sends an ACK
+                        if (counter == 0) next_state <= STATE_SEND_CACK;
+
+                        // Otherwise decrement the counter
+                        else counter <= counter - 1;
+
                     end
+
                 end
 
-                // TODO finish this
+                // Prepares the controller ACK response
                 STATE_SEND_CACK: begin
+
+                    // Flag the ACK so the user can read the data
+                    ack <= 1;
+                    
+                    // Pull SDA low to signify ACK
                     sda_oe <= 1;
-                    sda_out <= 1;
-                    // if () begin
-                        // TODO if data pending, loop back to read
-                    // end else begin
-                        // Otherwise stop
-                        next_state <= STATE_STOP;
-                    // end
+                    sda_out <= 0;
+                    next_state <= STATE_RELEASE_CACK;
+
                 end
 
+                // Similar to STATE_PREPARE_DATA, we need an extra state to
+                // release CACK at the right time. Also decide if we want to
+                // read again from the device
+                STATE_RELEASE_CACK: begin
+
+                    // Release SDA for another read if needed
+                    if (scl == 0) begin
+                        sda_oe <= 0;
+                    end
+
+                    // If still enabled, we can read again
+                    if (enable_transfer == 1) begin
+
+                        // Set counter and go read 8 bits
+                        counter <= 7;
+                        next_state <= STATE_READ_DATA;
+
+                    end
+
+                    // Otherwise stop
+                    else begin
+                        next_state <= STATE_STOP;
+                    end
+
+                end
+
+                // Sends the stop sequence
                 STATE_STOP: begin
+
+                    // Issue stop sequence where SDA goes high after SCL
                     sda_oe <= 1;
                     sda_out <= 1;
+
+                    // Clear ACK and NACK
+                    ack <= 0;
+                    nack <= 0;
+
+                    // Return to IDLE
                     next_state <= STATE_IDLE;
+                    
                 end
 
             endcase
