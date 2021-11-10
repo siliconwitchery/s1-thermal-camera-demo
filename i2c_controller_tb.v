@@ -1,5 +1,7 @@
-// This gives us a 50MHz clock
-`timescale 10 ns / 1 ps
+// This gives us a 50MHz tik-tok
+`timescale 10ns / 10ns
+
+`define SCL_PERIOD 240
 
 // Include the I2C controller, and clock divider
 `include "i2c_controller.v"
@@ -7,13 +9,19 @@
 
 module test_i2c_controller;
 
-    // Global system clock and reset
-    reg clk;
+    // Generate a 5MHz clock (the real chip is 6MHz)
+    reg hf_clk = 0;
+    initial begin : clk_25MHz
+        forever #2 hf_clk <= ~hf_clk;
+    end
+
     reg reset;
 
     // The I2C output wires
     wire scl;
-    wire sda;
+    wire sda_in;
+    wire sda_out;
+    wire sda_oe;
 
     // Local I2C clock wire (400kHz)
     wire i2c_clock;
@@ -32,14 +40,13 @@ module test_i2c_controller;
     // Flag to start the transfer
     reg start_transfer;
 
-    // SDA is bidirectional so we use this
-    reg sda_ack_en = 0;
-    reg sda_ack_val = 0;
-    assign sda = (sda_ack_en == 1) ? sda_ack_val : 'bz;
-
+    // SDA ACK assignment from peripheral
+    reg sda_peripheral_ack = 0;
+    assign sda_in = sda_peripheral_ack ? 0 : 'bZ;
+    
     // Instantiate the 50MHz-400kHz clock divider
     clock_divider clock_divider (
-        .sys_clk(clk),
+        .sys_clk(hf_clk),
         .slow_clk(i2c_clk)
     );
 
@@ -55,7 +62,9 @@ module test_i2c_controller;
         .write_pending(write_pending),
         .read_pending(read_pending),
         .start_transfer(start_transfer),
-        .sda(sda),
+        .sda_in(sda_in),
+        .sda_out(sda_out),
+        .sda_oe(sda_oe),
         .scl(scl)
     );
 
@@ -64,24 +73,16 @@ module test_i2c_controller;
         $dumpfile(".sim/test_i2c_controller.lxt");
         $dumpvars(0, test_i2c_controller);
     end
-    
-    // Always toggle clock every 10ns, for a 50MHz period
-    initial begin
-        clk = 0;
-        forever begin
-            clk = #1 ~clk;
-        end
-    end
 
     // The test routine is here
     initial begin
 
         // Reset the controller
         reset = 1;
-        #1000;
+        # (`SCL_PERIOD * 3);
         
         // Test parameters and start of the test
-        transmit_data = 8'hAA;
+        transmit_data = 8'hAB;
         address = 8'h9B;
         write_mode = 1;
         write_pending = 1;
@@ -89,28 +90,28 @@ module test_i2c_controller;
         reset = 0;
 
         // Issue the first peripheral ack (address) 
-        #5299
-        sda_ack_en = 1;
-        #252
-        sda_ack_en = 0;
+        # (`SCL_PERIOD * 10.25);
+        sda_peripheral_ack = 1;
+        # `SCL_PERIOD
+        sda_peripheral_ack = 0;
         
         // Issue the second peripheral ack (data) and set new data
-        #4788
-        sda_ack_en = 1;
+        # (`SCL_PERIOD * 9);
+        sda_peripheral_ack = 1;
         transmit_data = 8'h55;
-        #252
-        sda_ack_en = 0;
+        # `SCL_PERIOD
+        sda_peripheral_ack = 0;
 
         // Issue the third peripheral ack (data), clear write pending and stop transfer
-        #4788
-        sda_ack_en = 1;
+        # (`SCL_PERIOD * 9);
+        sda_peripheral_ack = 1;
         write_pending = 0;
         start_transfer = 0;
-        #252
-        sda_ack_en = 0;
+        # `SCL_PERIOD
+        sda_peripheral_ack = 0;
 
         // Done!
-        #10000;
+        # (`SCL_PERIOD * 3);
 
         $finish;
     end

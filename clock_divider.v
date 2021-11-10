@@ -5,10 +5,10 @@ module clock_divider (
     // 8 bit counter
 	reg [7:0] counter = 0;
 
-    always @(sys_clk) begin
+    always @(posedge sys_clk) begin
 
-        // Toggle the slow_clk every 50 50MHz ticks to give us 400kHz
-        if (counter == 125) begin
+        // Generate 800kHz I2C module clock from 24MHz system clock
+        if (counter == 'd14) begin
 
             slow_clk = ~slow_clk;
             counter = 0;

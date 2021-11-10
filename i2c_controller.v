@@ -28,7 +28,9 @@ module i2c_controller (
     input wire start_transfer,
 
     // The real I2C lines
-    inout  wire sda,
+    input  wire sda_in,
+    output reg sda_out,
+    output reg sda_oe,
     output reg scl
 );
     // List of possible I2C states
@@ -47,28 +49,34 @@ module i2c_controller (
     reg [7:0] state = STATE_IDLE;
 
     // We can only change state on entry, hence we need an extra variable. Else the SCL timing will be wrong
+    // TODO see if we can get rid of this
     reg [7:0] next_state = STATE_IDLE;
 
     // Local counter for shifting data to and from the SDA line
+    // TODO make this shift
     reg [7:0] counter = 0;
 
-    // Enables transmit mode of the SDA
-    reg sda_oe = 0;
+    // Internal address reg
+    reg [7:0] i_address = 0;
+    reg [7:0] i_transmit_data = 0;
 
     // Internal TX/RX buffers that sit just before the SDA line
+    // TODO fix this comment
     reg sda_received = 0;
-    reg sda_transmit = 0;
 
     // Set SDA either as in or out depending on OE
-    assign sda = sda_oe ? sda_transmit : 1'bZ;
+    // TODO fix this for yosys
+    // assign sda = sda_oe ? sda_out : 1'b0;
+    // assign sda = sda_oe ? sda_out : 1'bZ;
 
     // Inbound SDA is only valid on a positive SCL edge
     always @(posedge scl) begin
-        sda_received = sda;
+        sda_received = sda_in;
     end
 
     // This block generates SCL under the different states
-    always @(negedge clk or posedge reset) begin
+    // TODO FIX THIS
+    always @(negedge clk || reset) begin
 
         // When we're in reset, IDLE, Start or Stop, we keep scl high
         if ((reset == 1)
@@ -134,11 +142,12 @@ module i2c_controller (
 
                     // Engage drive to SDA and send low for start sequence
                     sda_oe = 1;
-                    sda_transmit <= 0;
+                    sda_out <= 0;
 
                     // Set counter to push out 7 addr bits and 1 RW bit
-                    counter <= 7;
+                    counter <= 6;
                     next_state <= STATE_ADDR;
+                    i_address <= address;
 
                     // Flag that the controller is busy
                     busy <= 1;
@@ -152,10 +161,18 @@ module i2c_controller (
                     if (scl == 0) begin
 
                         // Push out address bits and decrement counter.
-                        sda_transmit <= address[counter--];
+
+                        // sda_out <= address[counter];
+                        // counter <= counter - 1;
+
+                        //////
+                        sda_out <= i_address[7];
+                        i_address <= {i_address[6:0], 1'b0};
+                        //////
 
                         // The last bit is R/W so we skip it and go to the RW state
                         if (counter == 0) next_state <= STATE_RW;
+                        else counter <= counter - 'b1;
                     
                     end
                 end
@@ -166,8 +183,8 @@ module i2c_controller (
                     // Only change data on SDA when SCL is low
                     if (scl == 0) begin
 
-                        // If write mode, we send a 1, otherwise send a 0
-                        sda_transmit <= write_mode ? 1 : 0;
+                        // If write mode, we send a 0, otherwise send a 1
+                        sda_out <= write_mode ? 0 : 1;
 
                         // Then wait for the peripheral acknowledgement
                         next_state <= STATE_WAIT_PACK;
@@ -222,7 +239,8 @@ module i2c_controller (
 
                             // We need to set SDA to transmit and issue the first bit here
                             sda_oe <= 1;
-                            sda_transmit <= transmit_data[counter];
+                            i_transmit_data <= transmit_data;
+                            sda_out <= i_transmit_data[7];
                             next_state <= STATE_SEND_DATA;
 
                         end
@@ -238,7 +256,7 @@ module i2c_controller (
                     end
 
                     // Set counter to read/write 8 bits
-                    counter <= 7;
+                    counter <= 6;
 
                 end
 
@@ -249,10 +267,19 @@ module i2c_controller (
                     if (scl == 0) begin
 
                         // Pre decrement the counter and then send data. Ensure SDA is driven
-                        sda_transmit = transmit_data[--counter];
+                        // sda_out <= transmit_data[--counter];
+                        // sda_out <= transmit_data[counter];
+                        // counter <= counter - 1;
+                        // TODO fix this
+
+                    //////
+                        sda_out <= i_transmit_data[6];
+                        i_transmit_data <= {i_transmit_data[6:0], 1'b0};
+                        //////
 
                         // On the last bit we wait for another ack from the peripheral
                         if (counter == 0) next_state <= STATE_WAIT_PACK;
+                        else counter <= counter - 'b1;
 
                     end
                 end
@@ -272,7 +299,7 @@ module i2c_controller (
                 // TODO finish this
                 STATE_SEND_CACK: begin
                     sda_oe <= 1;
-                    sda_transmit <= 1;
+                    sda_out <= 1;
                     // if () begin
                         // TODO if data pending, loop back to read
                     // end else begin
@@ -283,7 +310,7 @@ module i2c_controller (
 
                 STATE_STOP: begin
                     sda_oe <= 1;
-                    sda_transmit <= 1;
+                    sda_out <= 1;
                     next_state <= STATE_IDLE;
                 end
 

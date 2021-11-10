@@ -3,4 +3,8 @@
 .sim
 
 # Don't keep local vscode settings
-.vscode/settings.json
+.vscode/*
+!.vscode/c_cpp_properties-template.json
+!.vscode/launch-template.json
+!.vscode/settings-template.json
+!.vscode/tasks-template.json
