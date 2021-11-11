@@ -5,6 +5,9 @@ module i2c_controller (
     // Resets everything.
     input wire reset,
 
+    // This line is high while the controller is idling
+    output reg idle,
+
     // Goes high after a successful data transfer. On this rising edge, data may
     // be written to, or read from on the transmit_data and received_data lines.
     output reg ack,
@@ -55,11 +58,14 @@ module i2c_controller (
     // state machine makes the transition into the new state.
     reg [4:0] next_state = STATE_IDLE;
 
+    // This flash is used to only report data acks, and not address acks.
+    reg data_sent = 0;
+
     // Three bit counter for counting bits pushed or pulled on SDA
     reg [3:0] counter = 0;
 
     // This block generates the SCL depending on which state is active
-    always @(negedge clk || reset) begin
+    always @(negedge clk) begin
 
         // When we're in reset, IDLE, Start or Stop, we should keep SCL high
         if (reset == 1 || 
@@ -89,7 +95,7 @@ module i2c_controller (
     end
 
     // This block handles the different states of the I2C controller logic
-    always @(posedge clk || reset) begin
+    always @(posedge clk) begin
         
         // If in reset, keep outputs high and reset everything
         if(reset == 1) begin
@@ -102,11 +108,18 @@ module i2c_controller (
             ack <= 0;
             nack <= 0;
 
+            // Clear idle
+            idle <= 0;
+
             // SDA output is disabled
             sda_oe <= 0;
 
             // And the received_data register is cleared
             received_data <= 0;
+
+            // Clear internals
+            data_sent = 0;
+            counter <= 0;
 
         end
 
@@ -121,7 +134,11 @@ module i2c_controller (
                 // Idle state
                 STATE_IDLE: begin
 
-                    // TODO maybe we want a flag to tell us that the controller is idle?
+                    // If ACK remains high, it means that the controller is idle
+                    idle <= 1;
+
+                    // Disable output in IDLE
+                    sda_oe <= 0;
 
                     // Start transfer when enable goes high
                     if (enable_transfer == 1) next_state <= STATE_START;
@@ -130,6 +147,9 @@ module i2c_controller (
 
                 // Sends the start sequence
                 STATE_START: begin
+
+                    // Clear the ACK
+                    idle <= 0;
 
                     // Engage SDA to output and set it as low
                     sda_oe <= 1;
@@ -187,26 +207,19 @@ module i2c_controller (
                         // acknowledged us
                         if (sda_in == 0) begin
 
-                            // Flag that the ACK happened, user should also
-                            // prepare the data on this rising edge
-                            ack <= 1;
+                            // If the data was ACK'd then trigger this flag. The
+                            // user can prepare the new data on this rising edge
+                            if (data_sent == 1) ack <= 1;
 
-                            // If enabled to do so, we can send data
-                            if (enable_transfer == 1) begin
+                            // Clear the data sent flag once we issue the ack
+                            data_sent <= 0;
 
-                                // Set counter to read/write 8 bits
-                                counter <= 7;
+                            // Set counter to read/write 8 bits
+                            counter <= 7;
 
-                                // Go to read or write accordingly
-                                next_state <= read_write ? STATE_READ_DATA 
-                                                         : STATE_PREPARE_DATA;
-
-                            end
-
-                            // Otherwise stop
-                            else begin
-                                next_state <= STATE_STOP;
-                            end
+                            // Go to read or write accordingly
+                            next_state <= read_write ? STATE_READ_DATA 
+                                                     : STATE_PREPARE_DATA;
 
                         end
 
@@ -229,13 +242,23 @@ module i2c_controller (
                     // Clear the ack
                     ack <= 0;
                     
-                    // Enable the output and push out the MSB
-                    sda_oe <= 1;
-                    sda_out <= transmit_data[7];
+                    // If enabled to do so, we prepare to send data
+                    if (enable_transfer == 1) begin
 
-                    // Adjust the counter and send out the remaining 7 bits
-                    counter <= 6;
-                    next_state <= STATE_SEND_DATA;
+                        // Enable the output and push out the MSB
+                        sda_oe <= 1;
+                        sda_out <= transmit_data[7];
+
+                        // Adjust the counter and send out the remaining 7 bits
+                        counter <= 6;
+                        next_state <= STATE_SEND_DATA;
+
+                    end
+
+                    // Otherwise stop
+                    else begin
+                        next_state <= STATE_STOP;
+                    end
 
                 end
 
@@ -249,7 +272,10 @@ module i2c_controller (
                         sda_out <= transmit_data[counter];
 
                         // On the last bit we return to wait for an ack
-                        if (counter == 0) next_state <= STATE_WAIT_PACK;
+                        if (counter == 0) begin
+                            data_sent <= 1;
+                            next_state <= STATE_WAIT_PACK;
+                        end
 
                         // Otherwise decrement the counter
                         else counter <= counter - 1;
@@ -263,21 +289,31 @@ module i2c_controller (
                     // Clear the ACK
                     ack <= 0;
 
-                    // Enable SDA to be input
-                    sda_oe <= 0;
+                    // If enabled to do so, we read data
+                    if (enable_transfer == 1) begin
+                   
+                        // Enable SDA to be input
+                        sda_oe <= 0;
 
-                    // Data is only valid when SCL is high
-                    if (scl == 1) begin
+                        // Data is only valid when SCL is high
+                        if (scl == 1) begin
 
-                        // Pull in 8 data bits
-                        received_data[counter] <= sda_in;
+                            // Pull in 8 data bits
+                            received_data[counter] <= sda_in;
 
-                        // Once we hit 0, the controller sends an ACK
-                        if (counter == 0) next_state <= STATE_SEND_CACK;
+                            // Once we hit 0, the controller sends an ACK
+                            if (counter == 0) next_state <= STATE_SEND_CACK;
 
-                        // Otherwise decrement the counter
-                        else counter <= counter - 1;
+                            // Otherwise decrement the counter
+                            else counter <= counter - 1;
 
+                        end
+
+                    end
+
+                    // Otherwise stop
+                    else begin
+                        next_state <= STATE_STOP;
                     end
 
                 end

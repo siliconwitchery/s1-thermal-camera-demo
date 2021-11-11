@@ -119,6 +119,10 @@ static void fpga_boot_task(void *p_context)
             LOG("FPGA started.");
         }
         break;
+
+    case DONE:
+        // Nothing to do
+        break;
     }
 }
 

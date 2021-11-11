@@ -1,15 +1,15 @@
 [*]
 [*] GTKWave Analyzer v3.3.107 (w)1999-2020 BSI
-[*] Wed Nov 10 15:34:37 2021
+[*] Thu Nov 11 17:03:32 2021
 [*]
 [dumpfile] "/Users/raj/projects/verilog-i2c-controller/.sim/test_i2c_controller.lxt"
-[dumpfile_mtime] "Wed Nov 10 15:34:12 2021"
-[dumpfile_size] 21980
+[dumpfile_mtime] "Thu Nov 11 17:03:23 2021"
+[dumpfile_size] 22041
 [savefile] "/Users/raj/projects/verilog-i2c-controller/test_i2c_controller.gtkw"
 [timestart] 0
 [size] 1440 790
 [pos] -1 -1
-*-15.183023 162100 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-15.183023 86400 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] test_i2c_controller.
 [sst_width] 193
 [signals_width] 295
@@ -23,6 +23,9 @@ test_i2c_controller.hf_clk[0]
 @28
 test_i2c_controller.i2c_clk[0]
 test_i2c_controller.reset[0]
+@29
+test_i2c_controller.idle[0]
+@28
 test_i2c_controller.ack[0]
 test_i2c_controller.nack[0]
 test_i2c_controller.address[6:0]
@@ -33,9 +36,12 @@ test_i2c_controller.enable_transfer[0]
 @200
 -
 -Controller internals
-@22
+@24
 test_i2c_controller.i2c_controller.state[4:0]
+@22
 test_i2c_controller.i2c_controller.counter[3:0]
+@28
+test_i2c_controller.i2c_controller.data_sent[0]
 @200
 -
 -Outputs

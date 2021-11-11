@@ -58,6 +58,7 @@ module test_i2c_controller;
     i2c_controller i2c_controller (
         .clk(i2c_clk),
         .reset(reset),
+        .idle(idle),
         .ack(ack),
         .nack(nack),
         .address(address),
@@ -112,9 +113,11 @@ module test_i2c_controller;
         // Issue the third peripheral ack for data and clear write pending flag to end the transfer
         # (`SCL_PERIOD * 9);
         sda_peripheral_ack = 1;
-        enable_transfer = 0;
         # `SCL_PERIOD
         sda_peripheral_ack = 0;
+
+        // Disable the transfer
+        enable_transfer = 0;
 
         // Wait a couple periods before starting the read operation (just for a visual gap)
         # `SCL_PERIOD;
@@ -134,8 +137,6 @@ module test_i2c_controller;
         sda_peripheral_ack = 1;
         # `SCL_PERIOD
         sda_peripheral_ack = 0;
-
-        // TODO this point on needs fixing
 
         // Issue simulated data from the peripheral on the SDA
         sda_peripheral_data = 1;
