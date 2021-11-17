@@ -8,7 +8,7 @@
 `include "i2c_controller.v"
 `include "clock_divider.v"
 
-module test_i2c_controller;
+module i2c_controller_tb;
 
     // Generate a 25MHz clock (Note that the real chip will be 24MHz)
     reg hf_clk = 0;
@@ -74,8 +74,8 @@ module test_i2c_controller;
 
     // This is where the simulation output file is saved
     initial begin
-        $dumpfile(".sim/test_i2c_controller.lxt");
-        $dumpvars(0, test_i2c_controller);
+        $dumpfile(".sim/i2c_controller_tb.lxt");
+        $dumpvars(0, i2c_controller_tb);
     end
 
     // The test routine is here

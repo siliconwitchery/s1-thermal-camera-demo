@@ -21,7 +21,7 @@
 # -------------------------
 
 
-PROJECT_NAME = i2c_verilog_demo
+PROJECT_NAME = thermal_camera_demo
 SIM_DIRECTORY = .sim
 
 # Put the nRF SDK path here. If you don't have it, download it here:
@@ -35,11 +35,11 @@ GNU_PREFIX ?= arm-none-eabi
 
 # Source files
 SRC_FILES += \
-  main.c \
+  c-code/main.c \
 
 # Include paths
 INC_FOLDERS += \
-  . \
+  c-code \
 
 # Add compile time options
 OPT += -flto 	# Link time optimization
@@ -51,27 +51,23 @@ include s1-sdk/s1.mk
 # Build task for the verilog project
 build-verilog:
 	@mkdir -p $(OUTPUT_DIRECTORY)
-
 	@echo "\n---\nSynthesizing.\n"
-	@yosys -p "synth_ice40 -json $(OUTPUT_DIRECTORY)/hardware.json" -q -Wall -f verilog top.v
-
+	@yosys -p "synth_ice40 -json $(OUTPUT_DIRECTORY)/hardware.json" -q -Wall -f verilog verilog-code/top.v
 	@echo "\n---\nPlace and route.\n"
-	@nextpnr-ice40 --up5k --package uwg30 --json $(OUTPUT_DIRECTORY)/hardware.json --asc $(OUTPUT_DIRECTORY)/hardware.asc --pcf s1-sdk/s1.pcf 
-	
+	@nextpnr-ice40 --up5k --package uwg30 --json $(OUTPUT_DIRECTORY)/hardware.json --asc $(OUTPUT_DIRECTORY)/hardware.asc --pcf s1-sdk/s1.pcf -q
 	@icepack $(OUTPUT_DIRECTORY)/hardware.asc $(OUTPUT_DIRECTORY)/fpga_binfile.bin
-
 	@cd $(OUTPUT_DIRECTORY) && xxd -i fpga_binfile.bin fpga_binfile_ram.h
-
-	@sed '1s/^/const /' $(OUTPUT_DIRECTORY)/fpga_binfile_ram.h > fpga_binfile.h
+	@sed '1s/^/const /' $(OUTPUT_DIRECTORY)/fpga_binfile_ram.h > c-code/fpga_binfile.h
 
 
 # Build task to simulate the verilog using a test bench
-sim-verilog:
+sim-i2c-controller:
 	@mkdir -p $(SIM_DIRECTORY)
-
 	@echo "\n---\nSynthesizing with iVerilog.\n"
-	@iverilog -Wall -o .sim/i2c_controller_tb.out i2c_controller_tb.v
-
+	@iverilog -Wall -Iverilog-code -o .sim/i2c_controller_tb.out verilog-code/testbenches/i2c_controller_tb.v
 	@vvp .sim/i2c_controller_tb.out -lxt2
-	
-	@gtkwave .sim/test_i2c_controller.lxt test_i2c_controller.gtkw
+	@gtkwave .sim/i2c_controller_tb.lxt verilog-code/testbenches/i2c_controller_tb.gtkw
+
+# Remove the simulation folder
+clean-simulations:
+	rm -rf .sim
