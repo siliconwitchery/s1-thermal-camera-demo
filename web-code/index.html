@@ -6,7 +6,6 @@
     <meta name="author" content="Silicon Witchery AB">
     <script src="module-bluetooth.js"></script>
     <style>
-
         .title-block {
             margin-left: auto;
             margin-right: auto;
@@ -17,57 +16,40 @@
         }
 
         .pixel-grid {
+            margin: 0;
+            padding: 0;
+            border: 0;
+            border-spacing: 0;
+            border-collapse: collapse;
             margin-left: auto;
             margin-right: auto;
-            border: 0.25px solid #dfdfdf;
         }
 
         .pixel-grid td {
-            border: 0.25px solid #dfdfdf;
-            height: 5rem;
-            width: 5rem;
+            margin: 0;
+            padding: 0;
+            border: 1px solid #808080;
+            height: 25px;
+            width: calc(25px - 1px);
         }
 
         button {
-            width: 10rem;
-            vertical-align: top;
-            margin-bottom: 0.5rem;
-            margin-top: 0rem;
+            margin: 0;
+            padding: 0.5rem 3rem;
+            border: 1px solid #A0A0A0;
+            color: #808080;
+            /* text-decoration: none; */
+            background: white;
+            text-align: center;
+            transition: background 250ms ease-in-out,
+                color 250ms ease-in-out,
+                transform 150ms ease;
         }
 
-        button.fake {
-            border-style: none;
-            background: transparent;
-            color: black;
-            text-align: right;
-        }
-
-        input {
-            width: 20.2rem;
-        }
-
-        textarea {
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 14px;
-            font-style: normal;
-            font-variant: normal;
-            resize: vertical;
-            text-align: left;
-            margin-left: auto;
-            margin-right: auto;
-            width: 20.2rem;
-        }
-
-        output {
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 14px;
-            font-style: normal;
-            font-variant: normal;
-            resize: vertical;
-            text-align: left;
-            margin-left: auto;
-            margin-right: auto;
-            width: 20.2rem;
+        button:hover,
+        button:focus {
+            background: #A0A0A0;
+            color: white;
         }
 
         div {
@@ -78,7 +60,7 @@
 </head>
 
 <body>
-    <table class="title-block", cellspacing="0" cellpadding="0">
+    <table class="title-block" cellspacing="0" cellpadding="0">
         <tbody>
             <tr>
                 <td style="padding:0px 5px 0 0;vertical-align: middle;" width="50" valign="top"> <img alt="logo"
@@ -121,60 +103,458 @@
     </table>
 
     <div>
+        <table id="pixel-grid" class="pixel-grid">
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
 
-        <table class="pixel-grid" cellspacing="0">
-            <tr>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-   
         </table>
 
+        <br>
         <button id="connectButton">Connect</button>
-        <input type="text" id="secKeyLink" placeholder="https://yourserver.com/secure.key">
-        <br>
-
-        <button id="appUpdateButton" disabled>Upload Application</button>
-        <input type="text" id="appUpdateLink" placeholder="https://yourserver.com/myapp.bin">
-        <br>
-
-        <button class="my_red" id="fwUpdateButton" disabled>Update Firmware</button>
-        <input type="text" id="fwUpdateLink" placeholder="https://yourserver.com/firmware.zip">
-        <br>
-
-        <button id="deviceInfoButton" disabled>Get Device Info</button>
-        <button id="deviceStatusButton" disabled>Get Device Status</button>
-        <button id="deviceResetButton" disabled>Reset Device</button>
-        <br>
-
-        <button id="addTemplateButton" disabled>Add Template</button>
-        <button id="removeTemplateButton" disabled>Remove Template</button>
-        <button id="requestTemplateButton" disabled>Request Template</button>
-        <br>
-
-        <button id="sendButton" disabled>Send</button>
-        <textarea type="text" id="outboundJSON" rows=8></textarea>
-        <br>
-
-        <button class="fake" id="responseButton" disabled>Response:</button>
-        <textarea type="text" id="inboundJSON" rows=8 readonly></textarea>
-        <br>
 
     </div>
     <script>
-        // Variable to allow bad JSON to be sent
-        var force = false;
+        // Move all this into the function after the data is received
+        // The pixel grid as XY arrays for us to easily set cell colours with
+        var pixelGrid = document.getElementById("pixel-grid");
+        var yPixels = pixelGrid.getElementsByTagName("tr");
+        var xPixels = null;
+
+        // Temp of the pixel to set pixel brightness with
+        var temperature = 0;
+
+        // For each row
+        for (var y = 0; y < yPixels.length; y++) {
+            // Get all the x pixels
+            xPixels = yPixels[y].getElementsByTagName("td");
+            // For each x pixel
+            for (var x = 0; x < xPixels.length; x++) {
+                // Set the pixel background colour according to the temperature
+                xPixels[x].style.backgroundColor = heatMapColorforValue(temperature);
+                // Test pattern of cold to hot
+                temperature += (1 / (16 * 24));
+            }
+        }
+
+        // Simple 5 Colour heatmap function
+        function heatMapColorforValue(value) {
+            var h = (1.0 - value) * 240
+            return "hsl(" + h + ", 100%, 50%)";
+        }
 
         // Logic for connect/disconnect button
         document.getElementById('connectButton').addEventListener('click', function () {
@@ -187,14 +567,7 @@
                             break;
                         case "unsecure":
                             // Set the UI elements to allow connected interactions
-                            document.getElementById('connectButton').innerHTML =
-                                "Connected <b>Unsecure</b>";
-                            document.getElementById('appUpdateButton').disabled = false;
-                            document.getElementById('fwUpdateButton').disabled = false;
-                            document.getElementById('sendButton').disabled = false;
-                            document.getElementById('addTemplateButton').disabled = false;
-                            document.getElementById('removeTemplateButton').disabled = false;
-                            document.getElementById('requestTemplateButton').disabled = false;
+                            document.getElementById('connectButton').innerHTML = "Connected";
                             break;
                     }
                 })
@@ -204,97 +577,17 @@
                 })
         })
 
-        // Logic for app update button
-        document.getElementById('appUpdateButton').addEventListener('click', function () {
-            document.getElementById('appUpdateLink').placeholder = "Feature coming soon!";
-        })
-
-        // Logic for radio firmware update button
-        document.getElementById('fwUpdateButton').addEventListener('click', function () {
-            document.getElementById('fwUpdateLink').placeholder = "Feature coming soon!";
-        })
-
-        // Logic for add template button
-        document.getElementById('addTemplateButton').addEventListener('click', function () {
-            document.getElementById('outboundJSON').value = "{\n  \"add\": {\n    \n  }\n}";
-        })
-
-        // Logic for remove template button
-        document.getElementById('removeTemplateButton').addEventListener('click', function () {
-            document.getElementById('outboundJSON').value = "{\n  \"remove\": {\n    \n  }\n}";
-        })
-
-        // Logic for request template button
-        document.getElementById('requestTemplateButton').addEventListener('click', function () {
-            document.getElementById('outboundJSON').value = "{\n  \"request\": {\n    \n  }\n}";
-        })
-
-        // Logic for data send button. Should not be called unless device is connected
-        document.getElementById('sendButton').addEventListener('click', function () {
-            // Call the JSON send function and print out the formatted JSON
-            sendJSONData(document.getElementById('outboundJSON').value, force)
-                .then(function (prettyJSON) {
-                    document.getElementById('outboundJSON').value = prettyJSON;
-                    document.getElementById('sendButton').innerHTML = "Send <b>OK</b>";
-                    force = false;
-                })
-                .catch(function () {
-                    // If the JSON was invalid, print an error
-                    document.getElementById('sendButton').innerHTML = "<b>Invalid</b> Send anyway";
-                    force = true;
-                })
-        })
-
-        document.getElementById("outboundJSON").addEventListener("input", function () {
-            document.getElementById('sendButton').innerHTML = "Send";
-            force = false;
-        })
-
         // Handles logic to disable buttons and interactions when device is disconnected
         function disconnectHandler(event) {
-            document.getElementById('connectButton').innerHTML = "<b>Disconnected</b>";
-            document.getElementById('appUpdateButton').disabled = true;
-            document.getElementById('fwUpdateButton').disabled = true;
-            document.getElementById('sendButton').disabled = true;
-            document.getElementById('addTemplateButton').disabled = true;
-            document.getElementById('removeTemplateButton').disabled = true;
-            document.getElementById('requestTemplateButton').disabled = true;
             setTimeout(function () {
                 // Show "Disconnected" for 2s, then "Connect" again
                 document.getElementById('connectButton').innerHTML = "Connect";
             }, 2000);
         }
 
-        // Variable to keep track of how long ago the last message came in over bluetooth
-        var lastResponseTime;
-
-        // Call the function to update the time stamp every second
-        var intervalID = window.setInterval(updateLastResponseTimeCallback, 1000);
-
         // Function to update the message response box with incoming JSON string
         function updateResponseBox(prettyJSON) {
-            document.getElementById('inboundJSON').value = prettyJSON;
-            lastResponseTime = Date.now();
-            updateLastResponseTimeCallback();
-        }
-
-        // Calculate and prints the timestamp of the last message
-        function updateLastResponseTimeCallback() {
-            var time = Math.abs(lastResponseTime - Date.now());
-            var timeAsText = "∞";
-
-            // If time since last message is less than 10min, then print the time
-            if (time < (10 * 60 * 1000)) {
-                var seconds = Math.floor((time / 1000) % 60),
-                    minutes = Math.floor((time / (1000 * 60)) % 60);
-
-                minutes = (minutes < 10) ? "0" + minutes : minutes;
-                seconds = (seconds < 10) ? "0" + seconds : seconds;
-
-                timeAsText = minutes + ":" + seconds;
-            }
-
-            document.getElementById('responseButton').innerHTML = "Response " + timeAsText + " ago";
+            console.log(prettyJSON);
         }
     </script>
 
