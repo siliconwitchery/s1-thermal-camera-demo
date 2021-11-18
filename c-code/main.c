@@ -46,12 +46,15 @@ typedef enum
     ERASING,
     FLASHING,
     BOOTING,
+    WAIT_FOR_DATA,
     DONE
 } fpga_boot_state_t;
 
 static fpga_boot_state_t fpga_boot_state = STARTED;
 static uint32_t pages_remaining;
 static uint32_t page_address = 0x000000;
+
+static uint8_t data_buf[500] = {0};
 
 /**
  * @brief Clock event callback. Not used but required to have.
@@ -115,13 +118,26 @@ static void fpga_boot_task(void *p_context)
         if (s1_fpga_is_booted())
         {
             app_timer_stop(fpga_boot_task_id);
-            fpga_boot_state = DONE;
+            fpga_boot_state = WAIT_FOR_DATA;
             LOG("FPGA started.");
         }
         break;
 
+    // Wait for 1 second before reading back data§
+    case WAIT_FOR_DATA:
+        // Make this if int
+        NRFX_DELAY_US(10000000);
+        fpga_boot_state = DONE;
+        break;
+
+    // Dump data from FPGA over SPI
     case DONE:
-        // Nothing to do
+        s1_generic_spi_init(NRF_SPIM_FREQ_1M);
+        s1_generic_spi_tx_rx((uint8_t *)&data_buf, 0, (uint8_t *)&data_buf, 10);
+        for (uint8_t i = 0; i < 10; i++)
+        {
+            LOG("0x%x, ", data_buf[i]);
+        }
         break;
     }
 }

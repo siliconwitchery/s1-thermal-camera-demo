@@ -1,0 +1,21 @@
+[*]
+[*] GTKWave Analyzer v3.3.107 (w)1999-2020 BSI
+[*] Thu Nov 18 16:12:19 2021
+[*]
+[dumpfile] "/Users/raj/projects/verilog-i2c-controller/.sim/spi_controller_tb.lxt"
+[dumpfile_mtime] "Thu Nov 18 16:10:21 2021"
+[dumpfile_size] 586
+[savefile] "/Users/raj/projects/verilog-i2c-controller/verilog-code/testbenches/spi_controller_tb.gtkw"
+[timestart] 0
+[size] 1440 900
+[pos] -1 -26
+*-13.283420 1000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] spi_controller_tb.
+[sst_width] 193
+[signals_width] 192
+[sst_expanded] 1
+[sst_vpaned_height] 272
+@29
+spi_controller_tb.hf_clk[0]
+[pattern_trace] 1
+[pattern_trace] 0

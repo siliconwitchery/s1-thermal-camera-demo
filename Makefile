@@ -60,13 +60,21 @@ build-verilog:
 	@sed '1s/^/const /' $(OUTPUT_DIRECTORY)/fpga_binfile_ram.h > c-code/fpga_binfile.h
 
 
-# Build task to simulate the verilog using a test bench
+# Build task to simulate the i2c controller
 sim-i2c-controller:
 	@mkdir -p $(SIM_DIRECTORY)
 	@echo "\n---\nSynthesizing with iVerilog.\n"
 	@iverilog -Wall -Iverilog-code -o .sim/i2c_controller_tb.out verilog-code/testbenches/i2c_controller_tb.v
 	@vvp .sim/i2c_controller_tb.out -lxt2
 	@gtkwave .sim/i2c_controller_tb.lxt verilog-code/testbenches/i2c_controller_tb.gtkw
+
+# Build task to simulate the spi controller
+sim-spi-controller:
+	@mkdir -p $(SIM_DIRECTORY)
+	@echo "\n---\nSynthesizing with iVerilog.\n"
+	@iverilog -Wall -Iverilog-code -o .sim/spi_controller_tb.out verilog-code/testbenches/spi_controller_tb.v
+	@vvp .sim/spi_controller_tb.out -lxt2
+	@gtkwave .sim/spi_controller_tb.lxt verilog-code/testbenches/spi_controller_tb.gtkw
 
 # Remove the simulation folder
 clean-simulations:
