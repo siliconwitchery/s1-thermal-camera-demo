@@ -1,4 +1,5 @@
-// Include the I2C controller, and clock divider modules
+// Include the other modules
+`include "spi_controller.v"
 `include "i2c_controller.v"
 `include "clock_divider.v"
 
@@ -6,10 +7,14 @@
 `define US_TICKS 24
 
 module top (
-    output wire D3, // LED on S1 Popout. Used for status
-    input  wire D4, // Button on S1 Popout. Used for reset
-    output wire D5, // SDA pin on S1 Popout
-    output wire D6  // SCL pin on S1 Popout
+    input  wire SCK,    // SPI clock from nRF
+    input  wire CS,     // SPI chip select from nRF
+    output wire CIPO,   // SPI data out to nRF
+    output wire INT,    // Interrupt trigger to nRF
+    output wire D3,     // LED on S1 Popout. Used for status
+    input  wire D4,     // Button on S1 Popout. Used for reset
+    output wire D5,     // SDA pin on S1 Popout
+    output wire D6      // SCL pin on S1 Popout
 );
 
     // Temporary status bit
@@ -18,6 +23,13 @@ module top (
 
     // Assign the SCL line to D6
     assign D6 = scl;
+
+    reg cs;
+    reg sck;
+    reg cipo;
+    assign CS = cs;
+    assign SCK = sck;
+    assign CIPO = cipo;
 
     // Configure D5 as a tristate and connect it to the sda_in, _out, _oe lines
     SB_IO #(
@@ -82,14 +94,50 @@ module top (
     reg enable_transfer;
 
     // Variables related to camera data
-    reg [8:0] camera_rom [1664:0];          // Camera EEPROM data file
-    reg [15:0] pixel_buffer [768:0];        // Complete camera pixel buffer
+    // reg [7:0] camera_rom [1664:0];          // Camera EEPROM data file
+    // reg [15:0] pixel_buffer [768:0];        // Complete camera pixel buffer
     integer camera_bytes_remaining = 0;     // Remaining bytes during a read
     reg camera_current_page = 0;            // Page 1 or 0 that is being read
+    
+    // Memory access registers for camera rom and pixel data
+    reg [7:0] camera_rom_data_in = 0;
+    reg [7:0] camera_rom_data_out = 0;
+    reg [13:0] camera_rom_address = 0;
+    reg camera_rom_write_en = 0;
+    reg [7:0] camera_pixel_data_in = 0;
+    reg [7:0] camera_pixel_data_out = 0;
+    reg [13:0] camera_pixel_address = 0;
+    reg camera_pixel_write_en = 0;
+
+    // Memory buffer for the camera data
+    SB_SPRAM256KA camera_rom_file (
+        .ADDRESS(spi_dump_en ? camera_rom_address[13:0] : spi_pixel_address[13:0]),
+        .DATAIN({8'b0, camera_rom_data_in[7:0]}),
+        .MASKWREN(4'b1111), // 8 bit write
+        .WREN(camera_rom_write_en),
+        .CHIPSELECT(1'b1),
+        .CLOCK(clk),
+        .STANDBY(1'b0),
+        .SLEEP(1'b0),
+        .POWEROFF(1'b1),
+        .DATAOUT(camera_rom_data_out[7:0])
+    );
+
+    // Address variable for addressing data out of the memory, and into the spi
+    wire [13:0] spi_pixel_address;
+    reg spi_dump_en = 0;
+
+    // Connect the SPI interface to the frame buffer memory
+    spi_controller spi_controller (
+        .sck(sck),
+        .cs(cs),
+        .cipo(cipo),
+        .data(camera_rom_data_out[7:0]),             // TODO: move this to pixel_buffer
+        .data_address(spi_pixel_address[13:0])
+    );
 
     // General use delay counter
     integer delay_ticker = 0;
-
     
     // List of states for running the system logic
     localparam STATE_START = 0;
@@ -202,7 +250,9 @@ module top (
                 STATE_CAM_READ_ROM_INC_N: begin
 
                     // Save the received data into local memory
-                    camera_rom[1664-camera_bytes_remaining] <= received_data;
+                    camera_rom_data_in <= received_data;
+                    camera_rom_address <= 1664 - camera_bytes_remaining;
+                    // camera_rom[1664-camera_bytes_remaining] <= received_data;
 
                     // Decrement the bytes remaining to read
                     camera_bytes_remaining = camera_bytes_remaining - 1;
@@ -218,6 +268,8 @@ module top (
 
                     // Stop transfer
                     enable_transfer <= 0;
+
+                    spi_dump_en <= 1;
 
                     // Once I2C is idle again, we can read the status register
                     if (idle == 1) state <= STATE_CAM_READ_STATUS_ADR_1;

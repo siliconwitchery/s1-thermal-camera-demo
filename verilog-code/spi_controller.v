@@ -6,46 +6,54 @@ module spi_controller (
     input wire cs,
 
     // Data output pin to the nRF
-    output reg cipo,
+    output wire cipo,
 
     // Input from local memory that we will send
     input wire [7:0] data,
 
     // Selects which byte to read from
-    output reg [15:0] data_address
+    output wire [13:0] data_address
 );
 
-// Local states for the SPI transfer operations
-localparam STATE_STOPPED = 0;
+    // Counters for counting bits and bytes pushed out on SPI data line
+    reg [4:0] bit_counter = 0;
+    reg [13:0] byte_counter = 0;
 
-// State machine variable
-reg [4:0] state = STATE_STOPPED;
+    // Assign cipo to the current bit in data
+    assign cipo = cs ? data[bit_counter] : 0;
 
-// Counter for counting bits pushed out on SPI data line
-reg [32:0] counter = 0;
+    // Assign data_address to the current byte
+    assign data_address = cs ? byte_counter : 0;
 
-always @(posedge sck) begin
+    // Clock is active high (CPOL = 0) and data on leading edge (CPHA = 0)
+    // We therefore only change data on the negative edge
+    always @(negedge sck) begin
 
-    // We use active high CS so this functions as a reset line
-    if (cs == 0) begin
+        // We use active high CS so this functions as a reset line
+        if (cs == 0) begin
 
-        state <= STATE_STOPPED;
+            // Reset the two counters
+            bit_counter <= 0;
+            byte_counter <= 0;
 
-    end
+        end
 
-    else begin
+        // Otherwise clock out bits and bytes accordingly
+        else begin
 
-        case (state)
+            // Increment the bit counter
+            bit_counter <= bit_counter + 1;
 
-            STATE_STOPPED: begin
+            // Increment the byte every 8 bits
+            if (bit_counter == 7) begin
+
+                byte_counter <= byte_counter + 1;
+                bit_counter <= 0;
 
             end
 
-        endcase
+        end
 
     end
-
-end
-
     
 endmodule

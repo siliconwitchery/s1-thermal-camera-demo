@@ -54,7 +54,7 @@ build-verilog:
 	@echo "\n---\nSynthesizing.\n"
 	@yosys -p "synth_ice40 -json $(OUTPUT_DIRECTORY)/hardware.json" -q -Wall -f verilog verilog-code/top.v
 	@echo "\n---\nPlace and route.\n"
-	@nextpnr-ice40 --up5k --package uwg30 --json $(OUTPUT_DIRECTORY)/hardware.json --asc $(OUTPUT_DIRECTORY)/hardware.asc --pcf s1-sdk/s1.pcf -q
+	@nextpnr-ice40 --up5k --package uwg30 --json $(OUTPUT_DIRECTORY)/hardware.json --asc $(OUTPUT_DIRECTORY)/hardware.asc --pcf s1-sdk/s1.pcf
 	@icepack $(OUTPUT_DIRECTORY)/hardware.asc $(OUTPUT_DIRECTORY)/fpga_binfile.bin
 	@cd $(OUTPUT_DIRECTORY) && xxd -i fpga_binfile.bin fpga_binfile_ram.h
 	@sed '1s/^/const /' $(OUTPUT_DIRECTORY)/fpga_binfile_ram.h > c-code/fpga_binfile.h
