@@ -16,14 +16,14 @@ module spi_controller (
 );
 
     // Counters for counting bits and bytes pushed out on SPI data line
-    reg [4:0] bit_counter = 0;
+    reg [3:0] bit_counter = 0;
     reg [13:0] byte_counter = 0;
 
-    // Assign cipo to the current bit in data
-    assign cipo = cs ? data[bit_counter] : 0;
+    // Assign cipo to the current bit in data with MSB first
+    assign cipo = data[7 - bit_counter];
 
     // Assign data_address to the current byte
-    assign data_address = cs ? byte_counter : 0;
+    assign data_address = byte_counter;
 
     // Clock is active high (CPOL = 0) and data on leading edge (CPHA = 0)
     // We therefore only change data on the negative edge

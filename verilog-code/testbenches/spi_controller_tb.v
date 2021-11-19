@@ -18,6 +18,8 @@ module spi_controller_tb;
     // SPI chip select that we toggle in the test routine
     reg cs = 0;
 
+    wire cipo;
+    
     // Dummy memory
     reg [7:0] memory [9:0];
 

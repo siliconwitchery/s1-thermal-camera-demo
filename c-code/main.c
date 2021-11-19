@@ -45,16 +45,15 @@ typedef enum
     STARTED,
     ERASING,
     FLASHING,
-    BOOTING,
     WAIT_FOR_DATA,
-    DONE
+    DUMP_SPI
 } fpga_boot_state_t;
 
 static fpga_boot_state_t fpga_boot_state = STARTED;
 static uint32_t pages_remaining;
 static uint32_t page_address = 0x000000;
 
-static uint8_t data_buf[500] = {0};
+static uint8_t data_buf[500] = {0x01};
 
 /**
  * @brief Clock event callback. Not used but required to have.
@@ -106,38 +105,32 @@ static void fpga_boot_task(void *p_context)
 
         if (pages_remaining == 0)
         {
-            fpga_boot_state = BOOTING;
+            fpga_boot_state = WAIT_FOR_DATA;
             s1_fpga_boot();
             LOG("Flashing done.");
             break;
         }
         break;
 
-    // Wait for CDONE pin to go high then stop the task
-    case BOOTING:
-        if (s1_fpga_is_booted())
-        {
-            app_timer_stop(fpga_boot_task_id);
-            fpga_boot_state = WAIT_FOR_DATA;
-            LOG("FPGA started.");
-        }
-        break;
-
     // Wait for 1 second before reading back data§
     case WAIT_FOR_DATA:
         // Make this if int
-        NRFX_DELAY_US(10000000);
-        fpga_boot_state = DONE;
+        NRFX_DELAY_US(1000000);
+        fpga_boot_state = DUMP_SPI;
         break;
 
     // Dump data from FPGA over SPI
-    case DONE:
+    case DUMP_SPI:
         s1_generic_spi_init(NRF_SPIM_FREQ_1M);
-        s1_generic_spi_tx_rx((uint8_t *)&data_buf, 0, (uint8_t *)&data_buf, 10);
-        for (uint8_t i = 0; i < 10; i++)
+        s1_generic_spi_tx_rx((void *)&data_buf, 1, (uint8_t *)&data_buf, 4);
+        for (uint8_t i = 0; i < 5; i++)
         {
-            LOG("0x%x, ", data_buf[i]);
+            LOG_RAW("0x%x, ", data_buf[i]);
         }
+
+        // Stop task
+        app_timer_stop(fpga_boot_task_id);
+
         break;
     }
 }
@@ -171,7 +164,7 @@ int main(void)
                                      fpga_boot_task));
 
     APP_ERROR_CHECK(app_timer_start(fpga_boot_task_id,
-                                    APP_TIMER_TICKS(5),
+                                    APP_TIMER_TICKS(1),
                                     NULL));
 
     // The CPU is free to do nothing in the meanwhile
