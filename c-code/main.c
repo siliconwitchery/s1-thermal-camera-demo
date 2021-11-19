@@ -122,8 +122,8 @@ static void fpga_boot_task(void *p_context)
     // Dump data from FPGA over SPI
     case DUMP_SPI:
         s1_generic_spi_init(NRF_SPIM_FREQ_1M);
-        s1_generic_spi_tx_rx((void *)&data_buf, 1, (uint8_t *)&data_buf, 4);
-        for (uint8_t i = 0; i < 5; i++)
+        s1_generic_spi_tx_rx((void *)NULL, 0, (uint8_t *)&data_buf, 50);
+        for (uint8_t i = 0; i < 50; i++)
         {
             LOG_RAW("0x%x, ", data_buf[i]);
         }

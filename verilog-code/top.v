@@ -100,24 +100,12 @@ module top (
     // Variables related to camera data
     reg [7:0] camera_rom [1664:0];          // Camera EEPROM data file
     reg [7:0] pixel_buffer [1536:0];        // Complete camera pixel buffer
-    integer camera_bytes_remaining = 0;     // Remaining bytes during a read
+    integer camera_bytes_read = 0;          // How many bytes read so far
     reg camera_current_page = 0;            // Page 1 or 0 that is being read
     
     // Variables for connecting the SPI controller to the camera frame buffer
     wire [13:0] spi_data_out_address;
     reg [7:0] spi_data_out;
-
-    reg [7:0] dummy_data [9:0];
-
-    initial begin
-        dummy_data[0] = 'h87;
-        dummy_data[1] = 'h35;
-        dummy_data[2] = 'hF1;
-        dummy_data[3] = 'hC6;
-        dummy_data[4] = 'hF8;
-        dummy_data[5] = 'h53;
-        dummy_data[6] = 'h6C;
-    end
 
     // Connect the SPI interface to the frame buffer memory
     spi_controller spi_controller (
@@ -125,8 +113,7 @@ module top (
         .sck(SCK),
         .cs(CS),
         .cipo(CIPO),
-        // .data(dummy_data[spi_data_out_address]),
-        .data(spi_data_out[spi_data_out_address]),
+        .data(spi_data_out),
         .data_address(spi_data_out_address)
     );
 
@@ -226,10 +213,10 @@ module top (
                 // Switch over to read the camera ROM data
                 STATE_CAM_READ_ROM_SWITCH_MODE: begin
                     
-                    // Stop transfer and prepare to read 1664 bytes of ROM data
+                    // Stop transfer and prepare to read the ROM data
                     enable_transfer <= 0;
                     read_write = 1;
-                    camera_bytes_remaining <= 1664;
+                    camera_bytes_read <= 0;
 
                     // Once the I2C is idle, we can read the ROM bytes
                     if (idle == 1) state <= STATE_CAM_READ_ROM_BYTE_N;
@@ -249,13 +236,13 @@ module top (
                 STATE_CAM_READ_ROM_INC_N: begin
 
                     // Save the received data into local memory
-                    camera_rom[1664-camera_bytes_remaining] <= received_data;
+                    camera_rom[camera_bytes_read] <= received_data;
 
                     // Decrement the bytes remaining to read
-                    camera_bytes_remaining = camera_bytes_remaining - 1;
+                    camera_bytes_read = camera_bytes_read + 1;
 
                     // If not complete, we read again, otherwise we're done
-                    state <= camera_bytes_remaining == 0 
+                    state <= camera_bytes_read == 1664 
                         ? STATE_CAM_READ_ROM_DONE
                         : STATE_CAM_READ_ROM_BYTE_N;
 
