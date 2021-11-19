@@ -22,15 +22,13 @@ module top (
     output wire D8
 );
 
-    reg[3:0] test_vector;
-    assign D1 = CS; // test_vector[0];
-    assign D2 = SCK; // test_vector[1];
-    assign D7 = CIPO; // test_vector[2];
-    assign D8 = COPI;
-
-    // Temporary status bit
-    assign D3 = status[0];
-    reg [0:3] status = 0;
+    // Test signals
+    reg[4:0] test_vector;
+    assign D1 = test_vector[0];
+    assign D2 = test_vector[1];
+    assign D3 = test_vector[2];
+    assign D7 = test_vector[3]; 
+    assign D8 = test_vector[4];
 
     // Assign the SCL line to D6
     assign D6 = scl;
@@ -84,6 +82,7 @@ module top (
         .transmit_data(transmit_data),
         .received_data(received_data),
         .enable_transfer(enable_transfer),
+        .issue_restart(issue_restart),
         .sda_in(sda_in),
         .sda_out(sda_out),
         .sda_oe(sda_oe),
@@ -123,29 +122,43 @@ module top (
     end
 
     // General use delay counter
-    integer delay_ticker = 0;
+    reg [31:0] delay_ticker = 0;
     
     // List of states for running the system logic
     localparam STATE_START = 0;
-    localparam STATE_CAM_READ_ROM_ADR_2 = 1;
-    localparam STATE_CAM_READ_ROM_SWITCH_MODE = 2;
-    localparam STATE_CAM_READ_ROM_BYTE_N = 3;
-    localparam STATE_CAM_READ_ROM_INC_N = 4;
-    localparam STATE_CAM_READ_ROM_DONE = 5;
 
-    localparam STATE_CAM_READ_STATUS_ADR_1 = 6;
-    localparam STATE_CAM_READ_STATUS_ADR_2 = 7;
-    localparam STATE_CAM_READ_STATUS_SWITCH_MODE = 8;
-    localparam STATE_CAM_READ_STATUS_BYTE_1 = 9;
-    localparam STATE_CAM_READ_STATUS_BYTE_2 = 10;
-    localparam STATE_CAM_CHECK_STATUS = 11;
-    localparam STATE_CAM_WAIT_FOR_PAGE = 12;
-    localparam STATE_CAM_PAGE_READY = 13;
+    localparam STATE_SET_CONTROL_REG_ADR_1          = 1;
+    localparam STATE_SET_CONTROL_REG_ADR_2          = 2;
+    localparam STATE_SET_CONTROL_REG_DATA_1         = 3;
+    localparam STATE_SET_CONTROL_REG_DATA_2         = 4;
+    localparam STATE_SET_CONTROL_REG_DONE           = 5;
 
-    localparam STATE_I2C_ERROR = 255;
+    localparam STATE_SET_CONF_REG_ADR_1             = 10;
+    localparam STATE_SET_CONF_REG_ADR_2             = 11;
+    localparam STATE_SET_CONF_REG_DATA_1            = 12;
+    localparam STATE_SET_CONF_REG_DATA_2            = 13;
+    localparam STATE_SET_CONF_REG_DONE              = 14;
+
+    localparam STATE_CAM_READ_ROM_ADR_1             = 20;
+    localparam STATE_CAM_READ_ROM_ADR_2             = 21;
+    localparam STATE_CAM_READ_ROM_SWITCH_MODE       = 22;
+    localparam STATE_CAM_READ_ROM_BYTE_N            = 23;
+    localparam STATE_CAM_READ_ROM_INC_N             = 24;
+    localparam STATE_CAM_READ_ROM_DONE              = 25;
+
+    localparam STATE_CAM_READ_STATUS_ADR_1          = 30;
+    localparam STATE_CAM_READ_STATUS_ADR_2          = 31;
+    localparam STATE_CAM_READ_STATUS_SWITCH_MODE    = 32;
+    localparam STATE_CAM_READ_STATUS_BYTE_1         = 33;
+    localparam STATE_CAM_READ_STATUS_BYTE_2         = 34;
+    localparam STATE_CAM_CHECK_STATUS               = 35;
+    localparam STATE_CAM_WAIT_FOR_PAGE              = 36;
+    localparam STATE_CAM_PAGE_READY                 = 37;
+
+    localparam STATE_I2C_ERROR                      = 255;
 
     // Local state variable
-    reg [8:0] state = STATE_START;
+    reg [7:0] state = STATE_START;
 
     // Keeps track if I2C ack/nack are rising, falling, high or low
     reg [1:0] i2c_ack_monitor = 0;
@@ -166,6 +179,7 @@ module top (
 
             // Disable transfers
             enable_transfer <= 0;   // Don't transfer yet
+            issue_restart <= 0;
 
             // Clear the edge monitors
             i2c_ack_monitor <= 0;
@@ -189,13 +203,108 @@ module top (
                     // Chip address of the MLX90640 thermal camera
                     address <= 'h33;
                     
+                    // First state is setting the configuration
+                    state <= STATE_SET_CONTROL_REG_ADR_1;
+
+                end
+
+                STATE_SET_CONTROL_REG_ADR_1: begin
+
+                    // Write the control register address
+                    read_write <= 0;
+                    transmit_data <= 'h80; 
+                    enable_transfer <= 1;
+
+                    if_i2c_success(STATE_SET_CONTROL_REG_ADR_2);
+
+                end
+
+                STATE_SET_CONTROL_REG_ADR_2: begin
+
+                    transmit_data <= 'h0D; 
+
+                    if_i2c_success(STATE_SET_CONTROL_REG_DATA_1);
+
+                end
+
+                STATE_SET_CONTROL_REG_DATA_1: begin
+
+                    transmit_data <= 'h19; 
+
+                    if_i2c_success(STATE_SET_CONTROL_REG_DATA_2);
+
+                end
+
+                STATE_SET_CONTROL_REG_DATA_2: begin
+
+                    transmit_data <= 'h01; 
+
+                    if_i2c_success(STATE_SET_CONTROL_REG_DONE);
+
+                end
+
+                STATE_SET_CONTROL_REG_DONE: begin
+
+                    enable_transfer <= 0;
+                    issue_restart <= 0;
+
+                    // Once the I2C is idle, we can read the ROM bytes
+                    if (idle == 1) state <= STATE_SET_CONF_REG_ADR_1;
+
+                end
+
+                STATE_SET_CONF_REG_ADR_1: begin
+                    
+                    enable_transfer <= 1;
+
+                    transmit_data <= 'h80; 
+
+                    if_i2c_success(STATE_SET_CONF_REG_ADR_2);
+
+                end
+                
+                STATE_SET_CONF_REG_ADR_2: begin
+                    
+                    transmit_data <= 'h0F; 
+
+                    if_i2c_success(STATE_SET_CONF_REG_DATA_1);
+
+                end
+                
+                STATE_SET_CONF_REG_DATA_1: begin
+                    
+                    transmit_data <= 'h00; 
+
+                    if_i2c_success(STATE_SET_CONF_REG_DATA_2);
+
+                end
+                
+                STATE_SET_CONF_REG_DATA_2: begin
+                    
+                    transmit_data <= 'h00; 
+
+                    if_i2c_success(STATE_SET_CONF_REG_DONE);
+
+                end
+
+                STATE_SET_CONF_REG_DONE: begin
+
+                    enable_transfer <= 0;
+                    issue_restart <= 0;
+
+                    // Once the I2C is idle, we can read the ROM bytes
+                    if (idle == 1) state <= STATE_CAM_READ_ROM_ADR_1;
+
+                end
+                
+                STATE_CAM_READ_ROM_ADR_1: begin
+                    
                     // Write the first byte of the ROM address
-                    read_write = 0;
+                    read_write <= 0;
                     transmit_data <= 'h24;
                     enable_transfer <= 1;
 
-                    if (i2c_success == 1) state <= STATE_CAM_READ_ROM_ADR_2;
-                    if (i2c_failure == 1) state <= STATE_I2C_ERROR;
+                    if_i2c_success(STATE_CAM_READ_ROM_ADR_2);
 
                 end
 
@@ -205,8 +314,7 @@ module top (
                     // Write second byte of the ROM address
                     transmit_data <= 'h00;
 
-                    if (i2c_success == 1) state <= STATE_CAM_READ_ROM_SWITCH_MODE;
-                    if (i2c_failure == 1) state <= STATE_I2C_ERROR;
+                    if_i2c_success(STATE_CAM_READ_ROM_SWITCH_MODE);
 
                 end
 
@@ -215,7 +323,8 @@ module top (
                     
                     // Stop transfer and prepare to read the ROM data
                     enable_transfer <= 0;
-                    read_write = 1;
+                    issue_restart <= 1;
+                    read_write <= 1;
                     camera_bytes_read <= 0;
 
                     // Once the I2C is idle, we can read the ROM bytes
@@ -228,7 +337,11 @@ module top (
                     // Read byte by enabling transfer flag
                     enable_transfer <= 1;
 
-                    if (i2c_success == 1) state <= STATE_CAM_READ_ROM_INC_N;
+                    if (i2c_success == 1) begin
+                        state <= STATE_CAM_READ_ROM_INC_N;
+                        camera_bytes_read <= camera_bytes_read + 1;
+                    end
+                    
                     if (i2c_failure == 1) state <= STATE_I2C_ERROR;
 
                 end
@@ -239,19 +352,20 @@ module top (
                     camera_rom[camera_bytes_read] <= received_data;
 
                     // Decrement the bytes remaining to read
-                    camera_bytes_read = camera_bytes_read + 1;
 
                     // If not complete, we read again, otherwise we're done
+                    // read 1664 bytes
                     state <= camera_bytes_read == 1664 
                         ? STATE_CAM_READ_ROM_DONE
                         : STATE_CAM_READ_ROM_BYTE_N;
-
+                    
                 end
 
                 STATE_CAM_READ_ROM_DONE: begin
 
                     // Stop transfer
                     enable_transfer <= 0;
+                    issue_restart <= 0;
 
                     // Once I2C is idle again, we can read the status register
                     if (idle == 1) state <= STATE_CAM_READ_STATUS_ADR_1;
@@ -261,13 +375,12 @@ module top (
                 STATE_CAM_READ_STATUS_ADR_1: begin
 
                     // Write the first byte of the status register address
-                    read_write = 0; 
+                    read_write <= 0; 
                     transmit_data <= 'h80;
                     enable_transfer <= 1;
 
-                    if (i2c_success == 1) state <= STATE_CAM_READ_STATUS_ADR_2;
-                    if (i2c_failure == 1) state <= STATE_I2C_ERROR;
-
+                    if_i2c_success(STATE_CAM_READ_STATUS_ADR_2);
+                    
                 end
 
                 STATE_CAM_READ_STATUS_ADR_2: begin
@@ -275,8 +388,7 @@ module top (
                     // Write second byte of the status register address
                     transmit_data <= 'h00;
 
-                    if (i2c_success == 1) state <= STATE_CAM_READ_STATUS_SWITCH_MODE;
-                    if (i2c_failure == 1) state <= STATE_I2C_ERROR;
+                    if_i2c_success(STATE_CAM_READ_STATUS_SWITCH_MODE);
 
                 end
 
@@ -284,6 +396,7 @@ module top (
 
                     // Stop transfer and prepare to read 1 byte
                     enable_transfer <= 0;
+                    issue_restart <= 1;
                     read_write <= 1;
 
                     // Once the I2C is idle, we can start the read transaction
@@ -296,19 +409,13 @@ module top (
                     // Read bytes by enabling transfer flag
                     enable_transfer <= 1;
 
-                    if (i2c_success == 1) state <= STATE_CAM_READ_STATUS_BYTE_2;
-                    if (i2c_failure == 1) state <= STATE_I2C_ERROR;
+                    if_i2c_success(STATE_CAM_READ_STATUS_BYTE_2);
 
                 end
 
                 STATE_CAM_READ_STATUS_BYTE_2: begin
-
-                    // Bit 0 tells us which page was read
-                    // ???
-                    camera_current_page <= received_data[0];
-
-                    if (i2c_success == 1) state <= STATE_CAM_CHECK_STATUS;
-                    if (i2c_failure == 1) state <= STATE_I2C_ERROR;
+          
+                    if_i2c_success(STATE_CAM_CHECK_STATUS);
 
                 end
 
@@ -316,32 +423,40 @@ module top (
 
                     // Stop the transfer
                     enable_transfer <= 0;
-
+                    issue_restart <= 0;
+                    
                     // Bit 0 tells us which page was read
                     camera_current_page <= received_data[0];
 
-                    // Check if read is complete by checking bit 3
-                    // only change state once I2C is idle
-                    state <= (received_data[3] == 1 && idle == 1) 
-                        ? STATE_CAM_PAGE_READY
-                        : STATE_CAM_WAIT_FOR_PAGE;
+                    // Reset the delay ticker
+                    delay_ticker <= 0;
+
+                    // Wait to be done reading
+                    if (idle == 1) begin
+
+                        // Check if read is complete by checking bit 3
+                        // only change state once I2C is idle
+                        state <= received_data[3] == 1
+                            ? STATE_CAM_PAGE_READY
+                            : STATE_CAM_WAIT_FOR_PAGE;
+
+                    end
 
                 end
 
                 STATE_CAM_WAIT_FOR_PAGE: begin
 
                     // Increment the delay ticker
-                    delay_ticker = delay_ticker + 1;
+                    delay_ticker <= delay_ticker + 1;
 
-                    // Wait 100 us to check again
-                    if (delay_ticker == 100 * `US_TICKS) 
+                    // Wait 1000ms us to check again
+                    if (delay_ticker == 1000000 * `US_TICKS) 
                         state <= STATE_CAM_READ_STATUS_ADR_1;
                 
                 end
 
                 STATE_CAM_PAGE_READY: begin
                 
-                    status <= 1;
 
                 end
 
@@ -351,8 +466,7 @@ module top (
 
                     // Stop the transfer
                     enable_transfer <= 0;
-
-                    status <= 0;
+                    issue_restart <= 0;
 
                 end
 
@@ -361,5 +475,14 @@ module top (
         end
 
     end
+
+    task if_i2c_success(
+        input wire [7:0] next_state
+    );
+
+        if (i2c_success == 1) state <= next_state;
+        if (i2c_failure == 1) state <= STATE_I2C_ERROR;
+
+    endtask
 
 endmodule

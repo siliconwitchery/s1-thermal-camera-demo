@@ -31,6 +31,9 @@ module i2c_controller (
     // reads or writes.
     input wire enable_transfer,
 
+    // Set this line high if you don't want to send a stop bit
+    input wire issue_restart,
+
     // The I2C lines. SDA in, out, and oe should be routed to a tristate block.
     input  wire sda_in,
     output reg sda_out,
@@ -38,17 +41,18 @@ module i2c_controller (
     output reg scl
 );
     // List of the I2C controller states
-    localparam STATE_IDLE = 0;          // Idle state
-    localparam STATE_START = 1;         // Sends the start sequence
-    localparam STATE_ADDR = 2;          // Sends the 7 address bits
-    localparam STATE_RW = 3;            // Sends the read or write bit
-    localparam STATE_WAIT_PACK = 4;     // Checks for the peripheral ACK
-    localparam STATE_PREPARE_DATA = 5;  // Prepares data to send out
-    localparam STATE_SEND_DATA = 6;     // Sends data bits to the peripheral
-    localparam STATE_READ_DATA = 7;     // Reads data bits from the peripheral
-    localparam STATE_SEND_CACK = 8;     // Prepares the controller ACK response
-    localparam STATE_RELEASE_CACK = 9;  // Decides on repeated reads
-    localparam STATE_STOP = 10;         // Sends the stop sequence
+    localparam STATE_IDLE           = 0;  // Idle state
+    localparam STATE_START          = 1;  // Sends the start sequence
+    localparam STATE_ADDR           = 2;  // Sends the 7 address bits
+    localparam STATE_RW             = 3;  // Sends the read or write bit
+    localparam STATE_WAIT_PACK      = 4;  // Checks for the peripheral ACK
+    localparam STATE_PREPARE_DATA   = 5;  // Prepares data to send out
+    localparam STATE_SEND_DATA      = 6;  // Sends data bits to the peripheral
+    localparam STATE_READ_DATA      = 7;  // Reads data bits from the peripheral
+    localparam STATE_DECIDE_CACK    = 8;  // Send internal ack and wait for decision
+    localparam STATE_SEND_CACK      = 9;  // Prepares the controller ACK response
+    localparam STATE_RELEASE_CACK   = 10; // Decides on repeated reads
+    localparam STATE_STOP           = 11; // Sends the stop sequence
 
     // State machine variable
     reg [4:0] state = STATE_IDLE;
@@ -78,7 +82,8 @@ module i2c_controller (
         end
 
         // Keep low while we're waiting for new data, and CACK is being issued
-        else if (state == STATE_PREPARE_DATA || 
+        else if (state == STATE_PREPARE_DATA ||
+                 state == STATE_DECIDE_CACK ||
                  state == STATE_SEND_CACK) begin
 
             scl <= 0;
@@ -257,7 +262,16 @@ module i2c_controller (
 
                     // Otherwise stop
                     else begin
+
+                        // If we're not issuing a restart, this is how we set the
+                        // stop sequence.
+                        if (issue_restart == 0) begin
+                            sda_oe <= 1;
+                            sda_out <= 0;
+                        end
+
                         next_state <= STATE_STOP;
+
                     end
 
                 end
@@ -301,8 +315,8 @@ module i2c_controller (
                             // Pull in 8 data bits
                             received_data[counter] <= sda_in;
 
-                            // Once we hit 0, the controller sends an ACK
-                            if (counter == 0) next_state <= STATE_SEND_CACK;
+                            // Once we hit 0, the controller sends an ACK or NACK
+                            if (counter == 0) next_state <= STATE_DECIDE_CACK;
 
                             // Otherwise decrement the counter
                             else counter <= counter - 1;
@@ -318,15 +332,33 @@ module i2c_controller (
 
                 end
 
+                // Decide if controller should send an ACK or NACK
+                STATE_DECIDE_CACK: begin
+
+                    // Flag the ACK so the user can read the data
+                    ack <= 1;
+
+                    next_state <= STATE_SEND_CACK;
+
+                end
+
                 // Prepares the controller ACK response
                 STATE_SEND_CACK: begin
 
                     // Flag the ACK so the user can read the data
-                    ack <= 1;
-                    
-                    // Pull SDA low to signify ACK
+                    ack <= 0;
                     sda_oe <= 1;
-                    sda_out <= 0;
+
+                    // Send an ACK
+                    if (enable_transfer == 1) begin
+                        sda_out <= 0;
+                    end
+
+                    // Otherwise a NACK
+                    else begin
+                        sda_out <= 1;
+                    end
+
                     next_state <= STATE_RELEASE_CACK;
 
                 end
@@ -336,13 +368,13 @@ module i2c_controller (
                 // read again from the device
                 STATE_RELEASE_CACK: begin
 
-                    // Release SDA for another read if needed
-                    if (scl == 0) begin
-                        sda_oe <= 0;
-                    end
-
                     // If still enabled, we can read again
                     if (enable_transfer == 1) begin
+                        
+                        // Release SDA for another read if needed
+                        if (scl == 0) begin
+                            sda_oe <= 0;
+                        end
 
                         // Set counter and go read 8 bits
                         counter <= 7;
@@ -352,7 +384,16 @@ module i2c_controller (
 
                     // Otherwise stop
                     else begin
-                        next_state <= STATE_STOP;
+                        
+                        // Issue stop sequence only when SCL is low
+                        if (scl == 0) begin
+
+                            sda_oe <= 1;
+                            sda_out <= 0;
+                            next_state <= STATE_STOP;
+
+                        end
+
                     end
 
                 end
@@ -374,6 +415,7 @@ module i2c_controller (
                 end
 
             endcase
+            
         end
     end
 
