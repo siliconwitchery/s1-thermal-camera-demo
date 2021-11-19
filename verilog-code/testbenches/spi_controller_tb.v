@@ -9,17 +9,23 @@
 
 module spi_controller_tb;
 
-    // Generate the 1MHz SPI clock
+    // Generate high speed system clock
     reg hf_clk = 0;
+    initial begin : clk_10MHz
+        forever #5 hf_clk <= ~hf_clk;
+    end
+
+    // Generate the 1MHz SPI clock
+    reg spi_clk = 0;
     initial begin : clk_1MHz
-        forever #50 hf_clk <= ~hf_clk;
+        forever #50 spi_clk <= ~spi_clk;
     end
 
     // SPI chip select that we toggle in the test routine
     reg cs = 0;
 
     wire cipo;
-    
+
     // Dummy memory
     reg [7:0] memory [9:0];
 
@@ -27,10 +33,11 @@ module spi_controller_tb;
     wire [13:0] data_address;
 
     // SPI clock is enabled when cs is high
-    assign sck = cs ? hf_clk : 0;
+    assign sck = cs ? spi_clk : 0;
 
     // Instantiate the SPI controller
     spi_controller spi_controller (
+        .clk(hf_clk),
         .sck(sck),
         .cs(cs),
         .cipo(cipo),

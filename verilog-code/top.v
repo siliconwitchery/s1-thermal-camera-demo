@@ -107,14 +107,27 @@ module top (
     wire [13:0] spi_data_out_address;
     reg [7:0] spi_data_out;
 
+    reg [7:0] dummy_data [9:0];
+
+    initial begin
+        dummy_data[0] = 'h87;
+        dummy_data[1] = 'h35;
+        dummy_data[2] = 'hF1;
+        dummy_data[3] = 'hC6;
+        dummy_data[4] = 'hF8;
+        dummy_data[5] = 'h53;
+        dummy_data[6] = 'h6C;
+    end
+
     // Connect the SPI interface to the frame buffer memory
     spi_controller spi_controller (
+        .clk(clk),
         .sck(SCK),
         .cs(CS),
         .cipo(CIPO),
-        .data(8'b1010_0000),
-        // .data(spi_data_out),
-        // .data_address(spi_data_out_address)
+        // .data(dummy_data[spi_data_out_address]),
+        .data(spi_data_out[spi_data_out_address]),
+        .data_address(spi_data_out_address)
     );
 
     // Always provide the latest data to the SPI controller
