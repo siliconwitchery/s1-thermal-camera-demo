@@ -118,7 +118,7 @@ module top (
 
     // Always provide the latest data to the SPI controller
     always @(posedge clk) begin
-        spi_data_out <= camera_rom[spi_data_out_address]; // TODO: Change this to pixel_buffer
+        spi_data_out <= camera_rom[spi_data_out_address];
     end
 
     // General use delay counter
@@ -159,7 +159,13 @@ module top (
     localparam STATE_CAM_READ_STATUS_BYTE_2         = 44;
     localparam STATE_CAM_CHECK_STATUS               = 45;
     localparam STATE_CAM_WAIT_FOR_PAGE              = 46;
-    localparam STATE_CAM_PAGE_READY                 = 47;
+
+    localparam STATE_CAM_READ_PIXELS_ADR_1          = 50;
+    localparam STATE_CAM_READ_PIXELS_ADR_2          = 51;
+    localparam STATE_CAM_READ_PIXELS_SWITCH_MODE    = 52;
+    localparam STATE_CAM_READ_PIXELS_BYTE_N         = 53;
+    localparam STATE_CAM_READ_PIXELS_INC_N          = 54;
+    localparam STATE_CAM_READ_PIXELS_DONE           = 55;
 
     localparam STATE_I2C_ERROR                      = 255;
 
@@ -357,10 +363,7 @@ module top (
                     // Save the received data into local memory
                     camera_rom[camera_bytes_read] <= received_data;
 
-                    // Decrement the bytes remaining to read
-
-                    // If not complete, we read again, otherwise we're done
-                    // read 1664 bytes
+                    // Read a total of 1664 bytes
                     state <= camera_bytes_read == 1664 
                         ? STATE_CAM_READ_ROM_DONE
                         : STATE_CAM_READ_ROM_BYTE_N;
@@ -488,7 +491,7 @@ module top (
                         // Check if read is complete by checking bit 3
                         // only change state once I2C is idle
                         state <= received_data[3] == 1
-                            ? STATE_CAM_PAGE_READY
+                            ? STATE_CAM_READ_PIXELS_ADR_1
                             : STATE_CAM_WAIT_FOR_PAGE;
 
                     end
@@ -506,10 +509,74 @@ module top (
                 
                 end
 
-                STATE_CAM_PAGE_READY: begin
+                STATE_CAM_READ_PIXELS_ADR_1: begin
                 
+                    // Write the first byte of the frame address
+                    read_write <= 0;
+                    transmit_data <= 'h04;
+                    enable_transfer <= 1;
 
+                    if_i2c_success(STATE_CAM_READ_PIXELS_ADR_2);
 
+                end
+
+                STATE_CAM_READ_PIXELS_ADR_2: begin
+                
+                    // Write second byte of the frame address
+                    transmit_data <= 'h00;
+
+                    if_i2c_success(STATE_CAM_READ_PIXELS_SWITCH_MODE);
+                
+                end
+
+                STATE_CAM_READ_PIXELS_SWITCH_MODE: begin
+                
+                    // Stop transfer and prepare to read the frame data
+                    enable_transfer <= 0;
+                    issue_restart <= 1;
+                    read_write <= 1;
+                    camera_bytes_read <= 0;
+
+                    // Once the I2C is idle, we can read the ROM bytes
+                    if (idle == 1) state <= STATE_CAM_READ_PIXELS_BYTE_N;
+
+                end
+
+                STATE_CAM_READ_PIXELS_BYTE_N: begin
+                
+                    // Read byte by enabling transfer flag
+                    enable_transfer <= 1;
+
+                    if (i2c_success == 1) begin
+                        state <= STATE_CAM_READ_PIXELS_INC_N;
+                        camera_bytes_read <= camera_bytes_read + 1;
+                    end
+                    
+                    if (i2c_failure == 1) state <= STATE_I2C_ERROR;
+
+                end
+
+                STATE_CAM_READ_PIXELS_INC_N: begin
+                
+                    // Save the received data into local memory
+                    pixel_buffer[camera_bytes_read] <= received_data;
+
+                    // Read a total of 1536 bytes
+                    state <= camera_bytes_read == 1536 
+                        ? STATE_CAM_READ_PIXELS_DONE
+                        : STATE_CAM_READ_PIXELS_BYTE_N;
+                
+                end
+
+                STATE_CAM_READ_PIXELS_DONE: begin
+                
+                    // Stop transfer
+                    enable_transfer <= 0;
+                    issue_restart <= 0;
+
+                    // Once I2C is idle again, we can read the status register
+                    if (idle == 1) state <= STATE_CAM_READ_STATUS_ADR_1;
+                
                 end
 
                 STATE_I2C_ERROR: begin

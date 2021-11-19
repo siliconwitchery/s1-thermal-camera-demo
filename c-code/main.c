@@ -53,7 +53,7 @@ static fpga_boot_state_t fpga_boot_state = STARTED;
 static uint32_t pages_remaining;
 static uint32_t page_address = 0x000000;
 
-static uint8_t data_buf[500] = {0x01};
+static uint8_t data_buf[1536] = {0x01};
 
 /**
  * @brief Clock event callback. Not used but required to have.
@@ -115,21 +115,22 @@ static void fpga_boot_task(void *p_context)
     // Wait for 1 second before reading back data§
     case WAIT_FOR_DATA:
         // Make this if int
-        NRFX_DELAY_US(1000000);
+        NRFX_DELAY_US(100000);
+        s1_generic_spi_init(NRF_SPIM_FREQ_1M);
         fpga_boot_state = DUMP_SPI;
         break;
 
     // Dump data from FPGA over SPI
     case DUMP_SPI:
-        s1_generic_spi_init(NRF_SPIM_FREQ_1M);
-        s1_generic_spi_tx_rx((void *)NULL, 0, (uint8_t *)&data_buf, 50);
-        for (uint8_t i = 0; i < 50; i++)
+        s1_generic_spi_tx_rx((void *)NULL, 0, (uint8_t *)&data_buf, 1536);
+        for (uint32_t i = 0; i < 1536; i++)
         {
             LOG_RAW("0x%x, ", data_buf[i]);
         }
+        NRFX_DELAY_US(100000);
 
         // Stop task
-        app_timer_stop(fpga_boot_task_id);
+        // app_timer_stop(fpga_boot_task_id);
 
         break;
     }
