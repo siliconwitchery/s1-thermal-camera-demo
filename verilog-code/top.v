@@ -146,14 +146,20 @@ module top (
     localparam STATE_CAM_READ_ROM_INC_N             = 24;
     localparam STATE_CAM_READ_ROM_DONE              = 25;
 
-    localparam STATE_CAM_READ_STATUS_ADR_1          = 30;
-    localparam STATE_CAM_READ_STATUS_ADR_2          = 31;
-    localparam STATE_CAM_READ_STATUS_SWITCH_MODE    = 32;
-    localparam STATE_CAM_READ_STATUS_BYTE_1         = 33;
-    localparam STATE_CAM_READ_STATUS_BYTE_2         = 34;
-    localparam STATE_CAM_CHECK_STATUS               = 35;
-    localparam STATE_CAM_WAIT_FOR_PAGE              = 36;
-    localparam STATE_CAM_PAGE_READY                 = 37;
+    localparam STATE_CAM_RESET_STATUS_ADR_1         = 30;
+    localparam STATE_CAM_RESET_STATUS_ADR_2         = 31;
+    localparam STATE_CAM_RESET_STATUS_DATA_1        = 32;
+    localparam STATE_CAM_RESET_STATUS_DATA_2        = 33;
+    localparam STATE_CAM_RESET_STATUS_DONE          = 34;
+
+    localparam STATE_CAM_READ_STATUS_ADR_1          = 40;
+    localparam STATE_CAM_READ_STATUS_ADR_2          = 41;
+    localparam STATE_CAM_READ_STATUS_SWITCH_MODE    = 42;
+    localparam STATE_CAM_READ_STATUS_BYTE_1         = 43;
+    localparam STATE_CAM_READ_STATUS_BYTE_2         = 44;
+    localparam STATE_CAM_CHECK_STATUS               = 45;
+    localparam STATE_CAM_WAIT_FOR_PAGE              = 46;
+    localparam STATE_CAM_PAGE_READY                 = 47;
 
     localparam STATE_I2C_ERROR                      = 255;
 
@@ -368,6 +374,51 @@ module top (
                     issue_restart <= 0;
 
                     // Once I2C is idle again, we can read the status register
+                    if (idle == 1) state <= STATE_CAM_RESET_STATUS_ADR_1;
+
+                end
+
+                STATE_CAM_RESET_STATUS_ADR_1: begin
+                    
+                    read_write <= 0;
+                    enable_transfer <= 1;
+
+                    transmit_data <= 'h80; 
+
+                    if_i2c_success(STATE_CAM_RESET_STATUS_ADR_2);
+
+                end
+
+                STATE_CAM_RESET_STATUS_ADR_2: begin
+
+                    transmit_data <= 'h00; 
+
+                    if_i2c_success(STATE_CAM_RESET_STATUS_DATA_1);
+
+                end
+
+                STATE_CAM_RESET_STATUS_DATA_1: begin
+                    
+                    transmit_data <= 'h00; 
+
+                    if_i2c_success(STATE_CAM_RESET_STATUS_DATA_2);
+
+                end
+
+                STATE_CAM_RESET_STATUS_DATA_2: begin
+                    
+                    transmit_data <= 'h30; 
+
+                    if_i2c_success(STATE_CAM_RESET_STATUS_DONE);
+
+                end
+
+                STATE_CAM_RESET_STATUS_DONE: begin
+
+                    enable_transfer <= 0;
+                    issue_restart <= 0;
+
+                    // Once the I2C is idle, we can read the ROM bytes
                     if (idle == 1) state <= STATE_CAM_READ_STATUS_ADR_1;
 
                 end
@@ -458,9 +509,8 @@ module top (
                 STATE_CAM_PAGE_READY: begin
                 
 
+
                 end
-
-
 
                 STATE_I2C_ERROR: begin
 
