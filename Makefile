@@ -1,4 +1,4 @@
-# S1 I2C Verilog Demo
+# S1 Thermal MLX90640 camera demo
 # -------------------------
 #
 # Copyright 2021 Silicon Witchery AB
@@ -22,16 +22,14 @@
 
 
 PROJECT_NAME = thermal_camera_demo
-SIM_DIRECTORY = .sim
 
 # Put the nRF SDK path here. If you don't have it, download it here:
 # https://www.nordicsemi.com/Products/Development-software/nRF5-SDK
-NRF_SDK_PATH ?= 
+NRF_SDK_PATH ?=
 
 # Put your arm GCC path here. If you don't have it, download it here:
 # https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-rm/downloads
-GNU_INSTALL_ROOT ?= /Applications/ARM/bin/
-GNU_PREFIX ?= arm-none-eabi
+GNU_INSTALL_ROOT ?=
 
 # Source files
 SRC_FILES += \
@@ -41,9 +39,8 @@ SRC_FILES += \
 INC_FOLDERS += \
   c-code \
 
-# Add compile time options
-OPT += -flto 	# Link time optimization
-OPT += -g3 		# Debugging information (takes way more flash)
+# Use the S112 bluetooth stack linkerfile
+# LINKER_FILE = $(S1_SDK_PATH)/linker-files/s1-s112-softdevice-v-7.2.0.ld
 
 # This is where the magic happens.
 include s1-sdk/s1.mk
@@ -79,3 +76,11 @@ sim-spi-controller:
 # Remove the simulation folder
 clean-simulations:
 	rm -rf .sim
+
+# "make flash-s112-softdevice" will flash the bluetooth stack software to the nRF chip
+flash-s112-softdevice:
+	nrfjprog -f nrf52 --program $(NRF_SDK_PATH)/components/softdevice/s112/hex/*.hex --sectorerase -r
+
+# "make nrf_sdk_config" will start the nRF SDK configuration utility for editing sdk_config.h
+nrf_sdk_config:
+	java -jar $(NRF_SDK_PATH)/external_tools/cmsisconfig/CMSIS_Configuration_Wizard.jar c-code/sdk_config.h
