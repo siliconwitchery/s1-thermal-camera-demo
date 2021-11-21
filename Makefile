@@ -36,10 +36,12 @@ SRC_FILES += \
   c-code/main.c \
   $(NRF_SDK_PATH)/components/ble/ble_advertising/ble_advertising.c \
   $(NRF_SDK_PATH)/components/ble/common/ble_advdata.c \
-  $(NRF_SDK_PATH)/components/softdevice/common/nrf_sdh.c \
-  $(NRF_SDK_PATH)/components/libraries/pwr_mgmt/nrf_pwr_mgmt.c \
+  $(NRF_SDK_PATH)/components/ble/common/ble_conn_params.c \
+  $(NRF_SDK_PATH)/components/ble/common/ble_srv_common.c \
   $(NRF_SDK_PATH)/components/ble/nrf_ble_gatt/nrf_ble_gatt.c \
-  
+  $(NRF_SDK_PATH)/components/libraries/pwr_mgmt/nrf_pwr_mgmt.c \
+  $(NRF_SDK_PATH)/components/softdevice/common/nrf_sdh_ble.c \
+  $(NRF_SDK_PATH)/components/softdevice/common/nrf_sdh.c \
 
 # Include paths
 INC_FOLDERS += \
@@ -48,15 +50,15 @@ INC_FOLDERS += \
   $(NRF_SDK_PATH)/components/ble/common \
   $(NRF_SDK_PATH)/components/ble/nrf_ble_gatt \
   $(NRF_SDK_PATH)/components/ble/peer_manager \
+  $(NRF_SDK_PATH)/components/libraries/mutex \
+  $(NRF_SDK_PATH)/components/libraries/pwr_mgmt \
   $(NRF_SDK_PATH)/components/softdevice/common \
   $(NRF_SDK_PATH)/components/softdevice/s112/headers \
-  $(NRF_SDK_PATH)/components/libraries/pwr_mgmt \
-  $(NRF_SDK_PATH)/components/libraries/mutex \
   $(NRF_SDK_PATH)/components/softdevice/s112/headers/nrf52 \
 
 # Use the S112 bluetooth stack linker file
-# LINKER_FILE = $(S1_SDK_PATH)/linker-files/s1-s112-softdevice-v-7.2.0.ld
-# CFLAGS += -DNO_FPGA_FILE
+LINKER_FILE = $(S1_SDK_PATH)/linker-files/s1-s112-softdevice-v-7.2.0.ld
+CFLAGS += -DBLUETOOTH_ENABLED
 
 # Additional C flags
 CFLAGS += -DBLE_STACK_SUPPORT_REQD

@@ -8,3 +8,6 @@
 !.vscode/launch-template.json
 !.vscode/settings-template.json
 !.vscode/tasks-template.json
+
+# Don't include user workspace file
+*.code-workspace

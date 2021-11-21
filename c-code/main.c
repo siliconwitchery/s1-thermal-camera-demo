@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "nrf_strerror.h"
 #include "app_error.h"
 #include "app_scheduler.h"
 #include "app_timer.h"
@@ -45,6 +46,7 @@
 #include "nrf_ble_lesc.h"
 #include "nrf_delay.h"
 #include "nrf_gpio.h"
+#include "nrf_pwr_mgmt.h"
 #include "nrf_sdh_ble.h"
 #include "nrf_sdh.h"
 #include "nrf52811.h"
@@ -54,10 +56,23 @@
 #include "nrfx_twim.h"
 #include "s1.h"
 
+/**
+ * @brief We have two timer instances. One for the FPGA flash state machine, and
+ *        another for the Bluetooth application state machine. Only one runs at 
+ *        a time and is decided on at compile time.
+ */
 APP_TIMER_DEF(bluetooth_app_task);
 APP_TIMER_DEF(fpga_flasher_task);
 
-// Variables related to FPGA binary flashing
+/**
+ * @brief Declarations for the GATT and advertising global observers.
+ */
+NRF_BLE_GATT_DEF(m_gatt);
+BLE_ADVERTISING_DEF(m_advertising);
+
+/**
+ * @brief List of states for the FPGA flasher application.
+ */
 typedef enum
 {
     STARTED,
@@ -66,43 +81,58 @@ typedef enum
     DONE,
 } fpga_flasher_state_t;
 
+/**
+ * @brief State machine variable and counter variables for the flashing process.
+ */
 static fpga_flasher_state_t fpga_flasher_state = STARTED;
 static uint32_t flash_pages_remaining;
 static uint32_t flash_page_address = 0x000000;
 
-// Variables related to the Bluetooth application
+uint8_t data_response_pending_flag[1] = {0};
+
+/**
+ * @brief The Bluetooth base UUID for the camera data service
+ */
 #define SILICONWITCHERY_BASE_UUID                                                                          \
     {                                                                                                      \
         {                                                                                                  \
             0xab, 0x5a, 0x11, 0x37, 0xc5, 0xbf, 0x4d, 0xe8, 0x9e, 0xfe, 0x4d, 0x18, 0x81, 0x04, 0xfd, 0x48 \
         }                                                                                                  \
     }
+
+/**
+ * @brief This value is appended to the Bluetooth base UUID and becomes the 
+ * camera service UUID.
+ */
 #define SERVICE_UUID 0x0001
+
+/**
+ * @brief This value is appended to the Bluetooth base UUID and becomes the
+ * camera characteristic UUID.
+ */
 #define CHARACTERISTIC_UUID 0x0003
 
-// External library instances
-NRF_BLE_GATT_DEF(m_gatt);
-BLE_ADVERTISING_DEF(m_advertising);
-
-uint8_t outbound_data_pending_flag[1] = {0};
-
-// Forward declaration of our custom BLE event handler
-void bluetooth_event_handler(ble_evt_t const *p_ble_evt, void *p_context);
-
-// Once MTU exchange is complete, the final buffer size is stored here
+/**
+ * @brief The payload size is negotiated by the receiving device. This variable
+ *        keeps track of that size so we can break the camera data into chunks
+ *        according to this size.
+ */
 uint16_t max_negotiated_buffer_size = 512 - 3;
 
-typedef struct
+/**
+ * @brief This struct holds the connection handles for our camera service.
+ */
+struct ble_service
 {
     uint8_t uuid_type;
     uint16_t service_handle;
     ble_gatts_char_handles_t char_handles;
     uint16_t conn_handle;
-} ble_service_t;
+} ble_service;
 
-ble_service_t ble_service;
-
-// Variables related to reteriving and sending the camera data itself
+/**
+ * @brief This large buffer stores the latest camera frame data
+ */
 static uint8_t image_buffer[1536];
 
 /**
@@ -113,6 +143,9 @@ void clock_event_handler(nrfx_clock_evt_type_t event)
     (void)event;
 }
 
+/**
+ * @brief Restarts the SPI lines to receive data from the FPGA.
+ */
 void start_image_rx_bus(void)
 {
     nrfx_spim_config_t spi_config = NRFX_SPIM_DEFAULT_CONFIG;
@@ -127,6 +160,9 @@ void start_image_rx_bus(void)
     APP_ERROR_CHECK(nrfx_spim_init(&spi, &spi_config, NULL, NULL));
 }
 
+/**
+ * @brief This function retrieves the image data from the FPGA over SPI
+ */
 void get_image(void)
 {
     nrfx_spim_xfer_desc_t spi_xfer = NRFX_SPIM_XFER_RX(&image_buffer, 1536);
@@ -136,9 +172,12 @@ void get_image(void)
     APP_ERROR_CHECK(nrfx_spim_xfer(&spi, &spi_xfer, 0));
 }
 
+/**
+ * @brief GATT event handler. Only used for changing MTU payload size.
+ */
 static void gatt_evt_handler(nrf_ble_gatt_t *p_gatt, nrf_ble_gatt_evt_t const *p_evt)
 {
-    (void)p_gatt;
+    // (void)p_gatt;
 
     if (p_evt->evt_id == NRF_BLE_GATT_EVT_ATT_MTU_UPDATED)
     {
@@ -147,7 +186,10 @@ static void gatt_evt_handler(nrf_ble_gatt_t *p_gatt, nrf_ble_gatt_evt_t const *p
     }
 }
 
-// Function for handling advertising events
+/**
+ * @brief Advertising event handler that informs us which advertising mode we
+ *        are in.
+ */
 static void on_adv_evt_handler(ble_adv_evt_t ble_adv_evt)
 {
     switch (ble_adv_evt)
@@ -164,22 +206,32 @@ static void on_adv_evt_handler(ble_adv_evt_t ble_adv_evt)
         LOG("[Info] Advertising idle.");
         break;
 
-    default:
+    case BLE_ADV_EVT_DIRECTED_HIGH_DUTY:
+    case BLE_ADV_EVT_DIRECTED:
+    case BLE_ADV_EVT_FAST_WHITELIST:
+    case BLE_ADV_EVT_SLOW_WHITELIST:
+    case BLE_ADV_EVT_WHITELIST_REQUEST:
+    case BLE_ADV_EVT_PEER_ADDR_REQUEST:
         LOG("[Info] Advertising other status.");
         break;
     }
 }
 
-// Function for handling a Connection Parameters error
+/**
+ * @brief Error handler for bad connection parameters.
+ */
 static void conn_params_error_handler(uint32_t nrf_error)
 {
     APP_ERROR_HANDLER(nrf_error);
 }
 
-// Function for handling BLE GATT and GAP events
+/**
+ * @brief Bluetooth event handler which informs us of connection status as well
+ *        as updating PHY and a few other things.
+ */
 static void ble_evt_handler(ble_evt_t const *p_ble_evt, void *p_context)
 {
-    (void)p_context;
+    // (void)p_context;
 
     ret_code_t err_code;
 
@@ -206,16 +258,16 @@ static void ble_evt_handler(ble_evt_t const *p_ble_evt, void *p_context)
     }
     break;
 
+    // Disconnect on GATT Client timeout event.
     case BLE_GATTC_EVT_TIMEOUT:
-        // Disconnect on GATT Client timeout event.
         LOG("GATT Client Timeout.");
         err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle,
                                          BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
         APP_ERROR_CHECK(err_code);
         break;
 
+    // Disconnect on GATT Server timeout event.
     case BLE_GATTS_EVT_TIMEOUT:
-        // Disconnect on GATT Server timeout event.
         LOG("GATT Server Timeout.");
         err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
                                          BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
@@ -242,22 +294,19 @@ static void ble_evt_handler(ble_evt_t const *p_ble_evt, void *p_context)
             *((uint8_t *)&p_ble_evt->evt.gap_evt.params.auth_status.kdist_own),
             *((uint8_t *)&p_ble_evt->evt.gap_evt.params.auth_status.kdist_peer));
         break;
-
-    default:
-        // No implementation needed.
-        break;
     }
 }
 
-// Function for handling our incoming JSON data
+/**
+ * @brief Bluetooth service event handler. Sets flags for when the service is
+ *        up, and allows us to handle incoming data if we like.
+ */
 void ble_service_evt_handler(ble_evt_t const *p_ble_evt, void *p_context)
 {
     if ((p_context == NULL) || (p_ble_evt == NULL))
     {
         return;
     }
-
-    // ble_gatts_evt_write_t const *p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
 
     switch (p_ble_evt->header.evt_id)
     {
@@ -271,11 +320,13 @@ void ble_service_evt_handler(ble_evt_t const *p_ble_evt, void *p_context)
     }
 }
 
-// register the handler
+/**
+* @brief This macro registers the Bluetooth service event handler to the stack.
+*/
 NRF_SDH_BLE_OBSERVER(blue_service_obs, 2, ble_service_evt_handler, &ble_service);
 
 /**
- * @brief Pushes camera frame over bluetooth when called
+ * @brief Pushes chunk of a camera frame over bluetooth when called
  */
 void send_camera_data(void)
 {
@@ -290,7 +341,7 @@ void send_camera_data(void)
 
     hvx_params.handle = ble_service.char_handles.value_handle;
     hvx_params.p_data = (uint8_t *)&image_buffer;
-    hvx_params.p_len = &length;
+    hvx_params.p_len = &length; // TODO this is too big
     hvx_params.type = BLE_GATT_HVX_NOTIFICATION;
 
     sd_ble_gatts_hvx(ble_service.conn_handle, &hvx_params);
@@ -298,13 +349,18 @@ void send_camera_data(void)
 
 static void bluetooth_app_timer_handler(void *p_context)
 {
-    // We don't need context poointer
+    // We don't need the context pointer
     (void)p_context;
+
+    LOG("Hi!");
 }
 
 /**
- * @brief Main application portion of the Bluetooth application. This is 
- *        optimized out when building the FPGA flasher.
+ * @brief Main application portion of the Bluetooth application. This is largely
+ *        configuration and starting the bluetooth. At the bottom the
+ *        application state machine is started and control is handed to the
+ *        scheduler. This cannot run when the code is build with the FPGA
+ *        flasher option.
  */
 void main_bluetooth_app(void)
 {
@@ -333,23 +389,26 @@ void main_bluetooth_app(void)
 
     // GAP parameters init
     {
-        ble_gap_conn_params_t gap_conn_params;
         ble_gap_conn_sec_mode_t sec_mode;
 
         BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
 
-        char device_name[25] = "";
+        char device_name[20] = "";
 
-        snprintf(device_name, 25, "S1 Thermal Cam Demo %X", (uint16_t)NRF_FICR->DEVICEADDR[0]);
+        snprintf(device_name,
+                 20,
+                 "SuperStack %X",
+                 (uint16_t)NRF_FICR->DEVICEADDR[0]);
 
         err_code = sd_ble_gap_device_name_set(&sec_mode,
                                               (const uint8_t *)device_name,
-                                              (uint16_t)strlen((const char *)device_name));
+                                              strlen((const char *)device_name));
         APP_ERROR_CHECK(err_code);
 
         err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_GENERIC_WATCH);
         APP_ERROR_CHECK(err_code);
 
+        ble_gap_conn_params_t gap_conn_params;
         memset(&gap_conn_params, 0, sizeof(gap_conn_params));
 
         gap_conn_params.min_conn_interval = MSEC_TO_UNITS(30, UNIT_1_25_MS);
@@ -386,7 +445,7 @@ void main_bluetooth_app(void)
                                             &ble_service.service_handle);
         APP_ERROR_CHECK(err_code);
 
-        // Add the characteristic
+        // Add the camera data characteristic
         memset(&add_char_params, 0, sizeof(add_char_params));
         add_char_params.uuid = CHARACTERISTIC_UUID;
         add_char_params.uuid_type = ble_service.uuid_type;
@@ -422,11 +481,11 @@ void main_bluetooth_app(void)
         init.advdata.uuids_complete.uuid_cnt = sizeof(adv_uuids) / sizeof(adv_uuids[0]);
         init.advdata.uuids_complete.p_uuids = adv_uuids;
 
-        // JSON pending flag can go into main advertising packet
+        // Data pending flag can go into main advertising packet
         ble_advdata_manuf_data_t manuf_data;
         manuf_data.company_identifier = 0xFFFF;
-        manuf_data.data.p_data = outbound_data_pending_flag;
-        manuf_data.data.size = sizeof(outbound_data_pending_flag);
+        manuf_data.data.p_data = data_response_pending_flag;       // TODO: Needed? this was a flag before
+        manuf_data.data.size = sizeof(data_response_pending_flag); // Also set this size
         init.advdata.p_manuf_specific_data = &manuf_data;
 
         // Only use fast advertising forever
@@ -465,9 +524,9 @@ void main_bluetooth_app(void)
                                      APP_TIMER_MODE_REPEATED,
                                      bluetooth_app_timer_handler));
 
-    APP_ERROR_CHECK(app_timer_start(bluetooth_app_task,
-                                    APP_TIMER_TICKS(10),
-                                    NULL));
+    // APP_ERROR_CHECK(app_timer_start(bluetooth_app_task,
+    //                                 APP_TIMER_TICKS(5000),
+    //                                 NULL));
 
     // Start advertising
     APP_ERROR_CHECK(ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST));
@@ -492,7 +551,7 @@ void main_bluetooth_app(void)
  */
 static void fpga_flasher_timer_handler(void *p_context)
 {
-    // We don't need context poointer
+    // We don't need the context pointer
     (void)p_context;
 
     switch (fpga_flasher_state)
@@ -618,7 +677,7 @@ int main(void)
     APP_ERROR_CHECK(app_timer_init());
 
     // Initialise the scheduler
-    APP_SCHED_INIT(APP_TIMER_SCHED_EVENT_DATA_SIZE, 3);
+    APP_SCHED_INIT(APP_TIMER_SCHED_EVENT_DATA_SIZE, 10);
 
 #ifdef BLUETOOTH_ENABLED
     // If we're in normal operating mode, run the bluetooth application main()
@@ -627,6 +686,15 @@ int main(void)
     // Otherwise run the FPGA flasher
     main_fpga_flasher_app();
 #endif
+}
+
+// Softdevice error handler. Set flag and reset
+void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name)
+{
+    LOG("[ERROR] BLE stack error at %s:%d", p_file_name, line_num);
+    nrf_delay_ms(500);
+    NRF_BREAKPOINT_COND;
+    NVIC_SystemReset();
 }
 
 void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
@@ -646,7 +714,7 @@ void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
         error_info_t *p_info = (error_info_t *)info;
         LOG("ERROR %u [%s] at %s:%u\r\nPC at: 0x%08x",
             p_info->err_code,
-            nrf_strerror_get(p_info->err_code),
+            nrf_strerror_get((ret_code_t)p_info->err_code),
             p_info->p_file_name,
             p_info->line_num,
             pc);
@@ -658,4 +726,13 @@ void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
     }
 
     NRF_BREAKPOINT_COND;
+}
+
+// Hardfault handler. Set flag and reset
+void HardFault_Handler(void)
+{
+    LOG("[ERROR] CPU hardfault");
+    nrf_delay_ms(500);
+    NRF_BREAKPOINT_COND;
+    NVIC_SystemReset();
 }
