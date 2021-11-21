@@ -105,7 +105,7 @@ module top (
     // Variables for connecting the SPI controller to the camera frame buffer
     wire [13:0] spi_data_out_address;
     reg [7:0] spi_data_out;
-
+    
     // Connect the SPI interface to the frame buffer memory
     spi_controller spi_controller (
         .clk(clk),
@@ -118,7 +118,7 @@ module top (
 
     // Always provide the latest data to the SPI controller
     always @(posedge clk) begin
-        spi_data_out <= camera_rom[spi_data_out_address];
+        spi_data_out <= pixel_buffer[spi_data_out_address];
     end
 
     // General use delay counter

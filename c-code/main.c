@@ -53,12 +53,35 @@ static fpga_boot_state_t fpga_boot_state = STARTED;
 static uint32_t pages_remaining;
 static uint32_t page_address = 0x000000;
 
-static uint8_t data_buf[1536] = {0x01};
+static uint8_t image_buffer[1536];
 
 /**
  * @brief Clock event callback. Not used but required to have.
  */
 void clock_event_handler(nrfx_clock_evt_type_t event) {}
+
+void start_image_rx_bus(void)
+{
+    nrfx_spim_config_t spi_config = NRFX_SPIM_DEFAULT_CONFIG;
+
+    spi_config.mosi_pin = SPI_SO_PIN;
+    spi_config.miso_pin = SPI_SI_PIN;
+    spi_config.sck_pin = SPI_CLK_PIN;
+    spi_config.ss_pin = SPI_CS_PIN;
+
+    nrfx_spim_t spi = NRFX_SPIM_INSTANCE(0);
+
+    APP_ERROR_CHECK(nrfx_spim_init(&spi, &spi_config, NULL, NULL));
+}
+
+void get_image(void)
+{
+    nrfx_spim_xfer_desc_t spi_xfer = NRFX_SPIM_XFER_RX(&image_buffer, 1536);
+
+    nrfx_spim_t spi = NRFX_SPIM_INSTANCE(0);
+
+    APP_ERROR_CHECK(nrfx_spim_xfer(&spi, &spi_xfer, 0));
+}
 
 /**
  * @brief Timer based state machine for flashing the FPGA
@@ -114,23 +137,22 @@ static void fpga_boot_task(void *p_context)
 
     // Wait for 1 second before reading back data§
     case WAIT_FOR_DATA:
-        // Make this if int
+
+        start_image_rx_bus();
+
         NRFX_DELAY_US(100000);
-        s1_generic_spi_init(NRF_SPIM_FREQ_1M);
+
         fpga_boot_state = DUMP_SPI;
         break;
 
     // Dump data from FPGA over SPI
     case DUMP_SPI:
-        s1_generic_spi_tx_rx((void *)NULL, 0, (uint8_t *)&data_buf, 1536);
+        get_image();
         for (uint32_t i = 0; i < 1536; i++)
         {
-            LOG_RAW("0x%x, ", data_buf[i]);
+            LOG_RAW("0x%x, ", image_buffer[i]);
         }
         NRFX_DELAY_US(100000);
-
-        // Stop task
-        // app_timer_stop(fpga_boot_task_id);
 
         break;
     }
