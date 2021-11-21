@@ -34,13 +34,40 @@ GNU_INSTALL_ROOT ?=
 # Source files
 SRC_FILES += \
   c-code/main.c \
+  $(NRF_SDK_PATH)/components/ble/ble_advertising/ble_advertising.c \
+  $(NRF_SDK_PATH)/components/ble/common/ble_advdata.c \
+  $(NRF_SDK_PATH)/components/softdevice/common/nrf_sdh.c \
+  $(NRF_SDK_PATH)/components/libraries/pwr_mgmt/nrf_pwr_mgmt.c \
+  $(NRF_SDK_PATH)/components/ble/nrf_ble_gatt/nrf_ble_gatt.c \
+  
 
 # Include paths
 INC_FOLDERS += \
   c-code \
+  $(NRF_SDK_PATH)/components/ble/ble_advertising \
+  $(NRF_SDK_PATH)/components/ble/common \
+  $(NRF_SDK_PATH)/components/ble/nrf_ble_gatt \
+  $(NRF_SDK_PATH)/components/ble/peer_manager \
+  $(NRF_SDK_PATH)/components/softdevice/common \
+  $(NRF_SDK_PATH)/components/softdevice/s112/headers \
+  $(NRF_SDK_PATH)/components/libraries/pwr_mgmt \
+  $(NRF_SDK_PATH)/components/libraries/mutex \
+  $(NRF_SDK_PATH)/components/softdevice/s112/headers/nrf52 \
 
-# Use the S112 bluetooth stack linkerfile
+# Use the S112 bluetooth stack linker file
 # LINKER_FILE = $(S1_SDK_PATH)/linker-files/s1-s112-softdevice-v-7.2.0.ld
+# CFLAGS += -DNO_FPGA_FILE
+
+# Additional C flags
+CFLAGS += -DBLE_STACK_SUPPORT_REQD
+CFLAGS += -DNRF_SD_BLE_API_VERSION=7
+CFLAGS += -DS112
+CFLAGS += -DSOFTDEVICE_PRESENT
+
+# Additional assembler flags
+ASMFLAGS += -DNRF_SD_BLE_API_VERSION=7
+ASMFLAGS += -DS112
+ASMFLAGS += -DSOFTDEVICE_PRESENT
 
 # This is where the magic happens.
 include s1-sdk/s1.mk
@@ -55,7 +82,6 @@ build-verilog:
 	@icepack $(OUTPUT_DIRECTORY)/hardware.asc $(OUTPUT_DIRECTORY)/fpga_binfile.bin
 	@cd $(OUTPUT_DIRECTORY) && xxd -i fpga_binfile.bin fpga_binfile_ram.h
 	@sed '1s/^/const /' $(OUTPUT_DIRECTORY)/fpga_binfile_ram.h > c-code/fpga_binfile.h
-
 
 # Build task to simulate the i2c controller
 sim-i2c-controller:
