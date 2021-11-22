@@ -88,8 +88,6 @@ static fpga_flasher_state_t fpga_flasher_state = STARTED;
 static uint32_t flash_pages_remaining;
 static uint32_t flash_page_address = 0x000000;
 
-uint8_t data_response_pending_flag[1] = {0};
-
 /**
  * @brief The Bluetooth base UUID for the camera data service
  */
@@ -108,7 +106,7 @@ uint8_t data_response_pending_flag[1] = {0};
  * @brief This value is appended to the Bluetooth base UUID and becomes the
  * camera characteristic UUID.
  */
-#define CHARACTERISTIC_UUID 0x1005
+#define CHARACTERISTIC_UUID 0x1002
 
 /**
  * @brief The payload size is negotiated by the receiving device. This variable
@@ -147,7 +145,7 @@ NRF_SDH_BLE_OBSERVER(ble_service_obs, 2, ble_evt_handler, &ble_service);
 /**
  * @brief This large buffer stores the latest camera frame data
  */
-static uint8_t image_buffer[1536];
+static uint8_t image_buffer[1536] = "hello there";
 
 /**
  * @brief Clock event callback. Not used but we need to have it.
@@ -238,7 +236,7 @@ static void on_adv_evt_handler(ble_adv_evt_t ble_adv_evt)
 static void ble_evt_handler(ble_evt_t const *p_ble_evt, void *p_context)
 {
 
-    LOG("BLE Event");
+    LOG("BLE Event: %d", p_ble_evt->header.evt_id);
 
     ble_service_t *p_cus = (ble_service_t *)p_context;
 
@@ -295,6 +293,12 @@ static void ble_evt_handler(ble_evt_t const *p_ble_evt, void *p_context)
         APP_ERROR_CHECK(err_code);
         break;
 
+    case BLE_GATTS_EVT_SYS_ATTR_MISSING:
+        // No system attributes have been stored.
+        err_code = sd_ble_gatts_sys_attr_set(p_ble_evt->evt.gatts_evt.conn_handle, NULL, 0, 0);
+        APP_ERROR_CHECK(err_code);
+        break; // BLE_GATTS_EVT_SYS_ATTR_MISSING
+
     case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
         LOG("BLE_GAP_EVT_SEC_PARAMS_REQUEST");
         break;
@@ -327,6 +331,9 @@ static void ble_evt_handler(ble_evt_t const *p_ble_evt, void *p_context)
  */
 void send_camera_data(void)
 {
+
+    // TODO only send data if the connection is valid. Some reason this crashes
+
     ble_gatts_hvx_params_t hvx_params = {0};
 
     if (ble_service.conn_handle == BLE_CONN_HANDLE_INVALID)
@@ -334,14 +341,15 @@ void send_camera_data(void)
         return;
     }
 
-    uint16_t length = sizeof(image_buffer);
+    // TODO if this is too big
+    uint16_t length = 10; // sizeof(image_buffer);
 
     hvx_params.handle = ble_service.char_handles.value_handle;
     hvx_params.p_data = (uint8_t *)&image_buffer;
-    hvx_params.p_len = &length; // TODO this is too big
+    hvx_params.p_len = &length;
     hvx_params.type = BLE_GATT_HVX_NOTIFICATION;
 
-    sd_ble_gatts_hvx(ble_service.conn_handle, &hvx_params);
+    APP_ERROR_CHECK(sd_ble_gatts_hvx(ble_service.conn_handle, &hvx_params));
 }
 
 static void bluetooth_app_timer_handler(void *p_context)
@@ -350,6 +358,7 @@ static void bluetooth_app_timer_handler(void *p_context)
     // (void)p_context;
 
     LOG("Hi!");
+    send_camera_data();
 }
 
 /**
@@ -376,6 +385,7 @@ void main_bluetooth_app(void)
         APP_ERROR_CHECK(nrf_sdh_ble_enable(&ram_start));
 
         // Register a handler for BLE events.
+        // TODO determine if we need this here
         // NRF_SDH_BLE_OBSERVER(m_ble_observer, 3, ble_evt_handler, NULL);
     }
 
@@ -392,8 +402,6 @@ void main_bluetooth_app(void)
         APP_ERROR_CHECK(sd_ble_gap_device_name_set(&sec_mode,
                                                    (const uint8_t *)device_name,
                                                    strlen((const char *)device_name)));
-
-        // APP_ERROR_CHECK(sd_ble_gap_appearance_set(BLE_APPEARANCE_GENERIC_WATCH));
 
         ble_gap_conn_params_t gap_conn_params = {0};
         gap_conn_params.min_conn_interval = MSEC_TO_UNITS(30, UNIT_1_25_MS);
@@ -426,97 +434,25 @@ void main_bluetooth_app(void)
                                                  &ble_uuid,
                                                  &ble_service.service_handle));
 
-        // Create characteristic
-        ble_gatts_char_md_t char_md = {0};
-        char_md.char_props.read = 1;
-        char_md.char_props.write = 1;
-        char_md.char_props.notify = 0;
-        char_md.p_char_user_desc = NULL;
-        char_md.p_char_pf = NULL;
-        char_md.p_user_desc_md = NULL;
-        char_md.p_cccd_md = NULL;
-        char_md.p_sccd_md = NULL;
+        // Add the camera data characteristic
+        ble_add_char_params_t add_char_params = {0};
 
-        ble_gatts_attr_md_t attr_md = {0};
+        add_char_params.uuid = CHARACTERISTIC_UUID;
+        add_char_params.uuid_type = ble_service.uuid_type;
+        add_char_params.max_len = NRF_SDH_BLE_GATT_MAX_MTU_SIZE - 3;
+        add_char_params.init_len = sizeof(uint8_t);
+        add_char_params.is_var_len = true;
+        add_char_params.char_props.notify = 1;
+        add_char_params.read_access = SEC_OPEN;
+        add_char_params.cccd_write_access = SEC_OPEN;
 
-        ble_srv_cccd_security_mode_t custom_value_char_attr_md;
-
-        BLE_GAP_CONN_SEC_MODE_SET_OPEN(&custom_value_char_attr_md.read_perm);
-        BLE_GAP_CONN_SEC_MODE_SET_OPEN(&custom_value_char_attr_md.write_perm);
-
-        attr_md.read_perm = custom_value_char_attr_md.read_perm;
-        attr_md.write_perm = custom_value_char_attr_md.write_perm;
-        attr_md.vloc = BLE_GATTS_VLOC_STACK;
-        attr_md.rd_auth = 0;
-        attr_md.wr_auth = 0;
-        attr_md.vlen = 0;
-
-        ble_uuid.type = ble_service.uuid_type;
-        ble_uuid.uuid = CHARACTERISTIC_UUID;
-
-        ble_gatts_attr_t attr_char_value = {0};
-        attr_char_value.p_uuid = &ble_uuid;
-        attr_char_value.p_attr_md = &attr_md;
-        attr_char_value.init_len = sizeof(uint8_t);
-        attr_char_value.init_offs = 0;
-        attr_char_value.max_len = sizeof(uint8_t);
-
-        APP_ERROR_CHECK(sd_ble_gatts_characteristic_add(ble_service.service_handle,
-                                                        &char_md,
-                                                        &attr_char_value,
-                                                        &ble_service.char_handles));
-        /// NEW STUFF ^^^
-
-        // ble_uuid_t ble_uuid;
-        // ble_uuid128_t base_uuid = SILICONWITCHERY_BASE_UUID;
-        // ble_add_char_params_t add_char_params;
-
-        // Set up UUID
-        // err_code = sd_ble_uuid_vs_add(&base_uuid, &ble_json.uuid_type);
-        // APP_ERROR_CHECK(err_code);
-
-        // ble_uuid.type = ble_json.uuid_type;
-        // ble_uuid.uuid = JSON_SERVICE_UUID;
-
-        // Add the service
-        // err_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY,
-        //                                     &ble_uuid,
-        //                                     &ble_json.service_handle);
-        // APP_ERROR_CHECK(err_code);
-
-        // Add the downlink characteristic
-        // memset(&add_char_params, 0, sizeof(add_char_params));
-        // add_char_params.uuid = CHARACTERISTIC_UUID;
-        // add_char_params.uuid_type = ble_json.uuid_type;
-        // add_char_params.max_len = NRF_SDH_BLE_GATT_MAX_MTU_SIZE - 3;
-        // add_char_params.init_len = sizeof(uint8_t);
-        // add_char_params.is_var_len = true;
-        // add_char_params.char_props.write = 1;
-        // add_char_params.write_access = SEC_OPEN;
-        // add_char_params.cccd_write_access = SEC_OPEN;
-
-        // err_code = characteristic_add(ble_json.service_handle, &add_char_params, &ble_json.dl_handles);
-        // APP_ERROR_CHECK(err_code);
-
-        // Add the uplink characteristic
-        // memset(&add_char_params, 0, sizeof(add_char_params));
-        // add_char_params.uuid = JSON_ULCHAR_UUID;
-        // add_char_params.uuid_type = ble_json.uuid_type;
-        // add_char_params.max_len = NRF_SDH_BLE_GATT_MAX_MTU_SIZE - 3;
-        // add_char_params.init_len = sizeof(uint8_t);
-        // add_char_params.is_var_len = true;
-        // //add_char_params.char_props.read = 1;
-        // add_char_params.char_props.notify = 1;
-        // add_char_params.read_access = SEC_OPEN;
-        // add_char_params.cccd_write_access = SEC_OPEN;
-
-        // err_code = characteristic_add(ble_json.service_handle, &add_char_params, &ble_json.ul_handles);
-        // APP_ERROR_CHECK(err_code);
+        APP_ERROR_CHECK(characteristic_add(ble_service.service_handle,
+                                           &add_char_params,
+                                           &ble_service.char_handles));
     }
 
     // Advertising init
     {
-
         // UUID which will go into the advertising packet
         static ble_uuid_t adv_uuids[1];
         adv_uuids[0].uuid = SERVICE_UUID;
@@ -524,50 +460,26 @@ void main_bluetooth_app(void)
 
         ble_advertising_init_t init = {0};
         init.advdata.flags = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
+
+        // Fast advertise forever
         init.config.ble_adv_fast_enabled = true;
         init.config.ble_adv_fast_interval = MSEC_TO_UNITS(20, UNIT_0_625_MS);
         init.config.ble_adv_fast_timeout = 0;
+
+        // Advertise full name in srdata
         init.srdata.name_type = BLE_ADVDATA_FULL_NAME;
-        init.evt_handler = on_adv_evt_handler;
+
+        // Advertise the custom service UUID
         init.advdata.uuids_complete.uuid_cnt = sizeof(adv_uuids) / sizeof(adv_uuids[0]);
         init.advdata.uuids_complete.p_uuids = adv_uuids;
 
+        // This is the callback handler
+        init.evt_handler = on_adv_evt_handler;
+
         APP_ERROR_CHECK(ble_advertising_init(&m_advertising, &init));
 
-        // NEW ^^
-
-        // UUID which will go into the advertising packet
-        // static ble_uuid_t adv_uuids[1];
-        // adv_uuids[0].uuid = SERVICE_UUID;
-        // adv_uuids[0].type = BLE_UUID_TYPE_VENDOR_BEGIN;
-
-        // ble_advertising_init_t init = {0};
-
-        // init.srdata.name_type = BLE_ADVDATA_FULL_NAME;
-        // init.advdata.include_appearance = true;
-        // init.advdata.flags = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
-        // init.advdata.uuids_complete.uuid_cnt = sizeof(adv_uuids) / sizeof(adv_uuids[0]);
-        // init.advdata.uuids_complete.p_uuids = adv_uuids;
-
-        // Data pending flag can go into main advertising packet
-        // ble_advdata_manuf_data_t manuf_data;
-        // manuf_data.company_identifier = 0xFFFF;
-        // manuf_data.data.p_data = data_response_pending_flag;       // TODO: Needed? this was a flag before
-        // manuf_data.data.size = sizeof(data_response_pending_flag); // Also set this size
-        // init.advdata.p_manuf_specific_data = &manuf_data;
-
-        // Only use fast advertising forever
-        // init.config.ble_adv_fast_enabled = true;
-        // init.config.ble_adv_fast_interval = MSEC_TO_UNITS(20, UNIT_0_625_MS);
-        // init.config.ble_adv_fast_timeout = 0;
-
-        // init.evt_handler = on_adv_evt_handler;
-
-        // APP_ERROR_CHECK(ble_advertising_init(&m_advertising, &init));
-
-        ble_advertising_conn_cfg_tag_set(&m_advertising, 1);
-
         // // Start advertising
+        ble_advertising_conn_cfg_tag_set(&m_advertising, 1);
         APP_ERROR_CHECK(ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST));
     }
 
