@@ -590,9 +590,9 @@ void main_bluetooth_app(void)
                                      APP_TIMER_MODE_REPEATED,
                                      bluetooth_app_timer_handler));
 
-    // APP_ERROR_CHECK(app_timer_start(bluetooth_app_task,
-    //                                 APP_TIMER_TICKS(5000),
-    //                                 NULL));
+    APP_ERROR_CHECK(app_timer_start(bluetooth_app_task,
+                                    APP_TIMER_TICKS(5000),
+                                    NULL));
 
     // Initialise power management
     APP_ERROR_CHECK(nrf_pwr_mgmt_init());
