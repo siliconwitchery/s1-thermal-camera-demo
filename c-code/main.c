@@ -28,10 +28,6 @@
  */
 
 #include <math.h>
-// #include <stdio.h>
-// #include <stdlib.h>
-// #include <string.h>
-
 #include "nrf_strerror.h"
 #include "app_error.h"
 #include "app_scheduler.h"
@@ -89,22 +85,45 @@ static uint32_t flash_pages_remaining;
 static uint32_t flash_page_address = 0x000000;
 
 /**
+ * @brief List of states for the Bluetooth application which sends camera data
+ *        to the web app.
+ */
+typedef enum
+{
+    BOOT_FPGA,
+    INIT_SPI,
+    READ_SPI_DATA,
+    SEND_PACKETS,
+} bluetooth_app_state_t;
+
+/**
+ * @brief State machine variable for the bluetooth to web app transfer.
+ */
+static bluetooth_app_state_t bluetooth_app_state = BOOT_FPGA;
+
+/**
+ * @brief Complete image frame buffer where we store the camera data from SPI.
+ */
+static uint8_t image_buffer[1536];
+
+/**
  * @brief The Bluetooth base UUID for the camera data service
  */
-#define SILICONWITCHERY_BASE_UUID                                                                      \
-    {                                                                                                  \
-        0xab, 0x5a, 0x11, 0x37, 0xc5, 0xbf, 0x4d, 0xe8, 0x9e, 0xfe, 0x4d, 0x18, 0x81, 0x04, 0xfd, 0x48 \
+#define SILICONWITCHERY_BASE_UUID                          \
+    {                                                      \
+        0xab, 0x5a, 0x11, 0x37, 0xc5, 0xbf, 0x4d, 0xe8,    \
+            0x9e, 0xfe, 0x4d, 0x18, 0x81, 0x04, 0xfd, 0x48 \
     }
 
 /**
  * @brief This value is appended to the Bluetooth base UUID and becomes the 
- * camera service UUID.
+ *        camera service UUID.
  */
 #define SERVICE_UUID 0x1000
 
 /**
  * @brief This value is appended to the Bluetooth base UUID and becomes the
- * camera characteristic UUID.
+ *        camera characteristic UUID.
  */
 #define CHARACTERISTIC_UUID 0x1001
 
@@ -113,7 +132,7 @@ static uint32_t flash_page_address = 0x000000;
  *        keeps track of that size so we can break the camera data into chunks
  *        according to this size.
  */
-uint16_t max_negotiated_buffer_size = 512 - 3;
+uint16_t negotiated_mtu_size;
 
 /**
  * @brief This struct holds the connection handles for our camera service.
@@ -143,11 +162,6 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context);
 NRF_SDH_BLE_OBSERVER(ble_service_obs, 2, ble_event_handler, &ble_service);
 
 /**
- * @brief This large buffer stores the latest camera frame data
- */
-static uint8_t image_buffer[1536];
-
-/**
  * @brief Clock event callback. Not used but we need to have it.
  */
 void clock_event_handler(nrfx_clock_evt_type_t event)
@@ -157,9 +171,9 @@ void clock_event_handler(nrfx_clock_evt_type_t event)
 }
 
 /**
- * @brief Restarts the SPI lines to receive data from the FPGA.
+ * @brief Starts the SPI to the FPGA for downloading camera data.
  */
-void start_image_rx_bus(void)
+void bluetooth_app_init_fpga_spi(void)
 {
     nrfx_spim_config_t spi_config = NRFX_SPIM_DEFAULT_CONFIG;
 
@@ -176,9 +190,10 @@ void start_image_rx_bus(void)
 /**
  * @brief This function retrieves the image data from the FPGA over SPI
  */
-void get_image(void)
+void bluetooth_app_get_camera_data(void)
 {
-    nrfx_spim_xfer_desc_t spi_xfer = NRFX_SPIM_XFER_RX(&image_buffer, 1536);
+    nrfx_spim_xfer_desc_t spi_xfer = NRFX_SPIM_XFER_RX(&image_buffer,
+                                                       sizeof(image_buffer));
 
     nrfx_spim_t spi = NRFX_SPIM_INSTANCE(0);
 
@@ -188,7 +203,8 @@ void get_image(void)
 /**
  * @brief GATT event handler. Only used for changing MTU payload size.
  */
-static void gatt_evt_handler(nrf_ble_gatt_t *p_gatt, nrf_ble_gatt_evt_t const *p_evt)
+static void gatt_event_handler(nrf_ble_gatt_t *p_gatt,
+                               nrf_ble_gatt_evt_t const *p_evt)
 {
     // We don't need the GATT pointer so we can void it
     (void)p_gatt;
@@ -197,7 +213,7 @@ static void gatt_evt_handler(nrf_ble_gatt_t *p_gatt, nrf_ble_gatt_evt_t const *p
     if (p_evt->evt_id == NRF_BLE_GATT_EVT_ATT_MTU_UPDATED)
     {
         LOG("MTU length set to: %d bytes", p_evt->params.att_mtu_effective);
-        max_negotiated_buffer_size = p_evt->params.att_mtu_effective - 3;
+        negotiated_mtu_size = p_evt->params.att_mtu_effective;
     }
 }
 
@@ -251,8 +267,9 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     case BLE_GAP_EVT_CONNECTED:
     {
         LOG("Connected");
-        LOG("Con handler: %d", p_ble_evt->evt.gap_evt.conn_handle);
+
         p_cus->conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+
         break;
     }
 
@@ -260,7 +277,9 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     case BLE_GAP_EVT_DISCONNECTED:
     {
         LOG("Disconnected");
+
         p_cus->conn_handle = BLE_CONN_HANDLE_INVALID;
+
         break;
     }
 
@@ -269,12 +288,16 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     {
 
         LOG("PHY update request");
+
         ble_gap_phys_t const phys = {
             .rx_phys = BLE_GAP_PHY_AUTO,
             .tx_phys = BLE_GAP_PHY_AUTO,
         };
-        APP_ERROR_CHECK(sd_ble_gap_phy_update(p_ble_evt->evt.gap_evt.conn_handle,
-                                              &phys));
+
+        APP_ERROR_CHECK(sd_ble_gap_phy_update(
+            p_ble_evt->evt.gap_evt.conn_handle,
+            &phys));
+
         break;
     }
 
@@ -282,8 +305,11 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     case BLE_GATTC_EVT_TIMEOUT:
     {
         LOG("GATT Client Timeout");
-        APP_ERROR_CHECK(sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle,
-                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION));
+
+        APP_ERROR_CHECK(sd_ble_gap_disconnect(
+            p_ble_evt->evt.gattc_evt.conn_handle,
+            BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION));
+
         break;
     }
 
@@ -291,8 +317,11 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     case BLE_GATTS_EVT_TIMEOUT:
     {
         LOG("GATT Server Timeout");
-        APP_ERROR_CHECK(sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
-                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION));
+
+        APP_ERROR_CHECK(sd_ble_gap_disconnect(
+            p_ble_evt->evt.gatts_evt.conn_handle,
+            BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION));
+
         break;
     }
 
@@ -300,10 +329,13 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     case BLE_GATTS_EVT_SYS_ATTR_MISSING:
     {
         LOG("Updating system attributes");
-        APP_ERROR_CHECK(sd_ble_gatts_sys_attr_set(p_ble_evt->evt.gatts_evt.conn_handle,
-                                                  NULL,
-                                                  0,
-                                                  0));
+
+        APP_ERROR_CHECK(sd_ble_gatts_sys_attr_set(
+            p_ble_evt->evt.gatts_evt.conn_handle,
+            NULL,
+            0,
+            0));
+
         break;
     }
 
@@ -316,20 +348,41 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
 }
 
 /**
- * @brief Pushes chunk of a camera frame over bluetooth when called
+ * @brief Pushes a chunk of camera frame data over bluetooth. Size of chunk is 
+ *        always negotiated_mtu_size.
+ * 
+ * @param packet_id: A number which determines if this is the first, mid or last 
+ *                   packet of the full image transfer. 0 means first, 1 means
+ *                   middle, and 2 means last.
+ * 
+ * @param data: Pointer to the data buffer.
+ * 
+ * @param len: Length of the data to send.
+ * 
+ * @param offset: What offset to send data from in the image_buffer.
  */
-void send_camera_data(void)
+void bluetooth_app_send_data_to_web_app(uint8_t packet_id,
+                                        uint8_t *data,
+                                        uint16_t length,
+                                        uint16_t offset)
 {
-    // TODO split this up
-    uint16_t length = 10; // sizeof(image_buffer);
+    uint8_t payload[NRF_SDH_BLE_GATT_MAX_MTU_SIZE];
+
+    payload[0] = packet_id;
+
+    memcpy(&payload + 1, data + offset, length);
 
     ble_gatts_hvx_params_t hvx_params = {0};
     hvx_params.handle = ble_service.char_handles.value_handle;
-    hvx_params.p_data = (uint8_t *)&image_buffer;
+    hvx_params.p_data = (uint8_t *)&payload;
     hvx_params.p_len = &length;
     hvx_params.type = BLE_GATT_HVX_NOTIFICATION;
 
-    sd_ble_gatts_hvx(ble_service.conn_handle, &hvx_params);
+    LOG("Sending packet. ID:%d, size:%d, offset:%d", packet_id, negotiated_mtu_size, offset);
+
+    uint32_t status = sd_ble_gatts_hvx(ble_service.conn_handle, &hvx_params);
+
+    LOG("Send status: %d", status);
 }
 
 static void bluetooth_app_timer_handler(void *p_context)
@@ -337,28 +390,88 @@ static void bluetooth_app_timer_handler(void *p_context)
     // We don't need the context pointer so we void it
     (void)p_context;
 
-    send_camera_data();
+    switch (bluetooth_app_state)
+    {
+    // Boot up the FPGA using image already stored in the Flash IC
+    case BOOT_FPGA:
+    {
+        LOG("Booting FPGA");
 
-    // // Wait for 1 second before reading back data§
-    // case WAIT_FOR_DATA:
+        s1_fpga_boot();
 
-    //     start_image_rx_bus();
+        bluetooth_app_state = INIT_SPI;
 
-    //     NRFX_DELAY_US(100000);
+        break;
+    }
 
-    //     fpga_boot_state = DUMP_SPI;
-    //     break;
+    // Wait for boot, and then initialize the SPI bus
+    case INIT_SPI:
+    {
+        if (s1_fpga_is_booted())
+        {
+            LOG("FPGA app started");
+            bluetooth_app_init_fpga_spi();
+            bluetooth_app_state = READ_SPI_DATA;
+        }
+    }
+    break;
 
-    // // Dump data from FPGA over SPI
-    // case DUMP_SPI:
-    //     get_image();
-    //     for (uint32_t i = 0; i < 1536; i++)
-    //     {
-    //         LOG_RAW("0x%x, ", image_buffer[i]);
-    //     }
-    //     NRFX_DELAY_US(100000);
+    // Wait for an interrupt signal on FPGA_DONE_PIN before reading SPI data
+    case READ_SPI_DATA:
+    {
+        if (s1_fpga_is_booted())
+        {
+            bluetooth_app_get_camera_data();
+            bluetooth_app_state = SEND_PACKETS;
+        }
 
-    //     break;
+        break;
+    }
+
+    case SEND_PACKETS:
+    {
+        uint8_t total_chunks = (uint8_t)ceil((float)sizeof(image_buffer) /
+                                             (float)negotiated_mtu_size);
+
+        for (uint8_t i = 0; i < total_chunks; i++)
+        {
+            // TODO dont send data too fast
+
+            // If first chunk
+            if (i == 0)
+            {
+                bluetooth_app_send_data_to_web_app(0,
+                                                   (uint8_t *)&image_buffer,
+                                                   negotiated_mtu_size,
+                                                   0);
+            }
+
+            // If last chunk
+            else if (i == total_chunks - 1)
+            {
+                bluetooth_app_send_data_to_web_app(2,
+                                                   (uint8_t *)&image_buffer +
+                                                       (i * negotiated_mtu_size),
+                                                   negotiated_mtu_size,
+                                                   (i * negotiated_mtu_size));
+            }
+
+            // If middle chunks
+            else
+            {
+                bluetooth_app_send_data_to_web_app(1,
+                                                   (uint8_t *)&image_buffer +
+                                                       (i * negotiated_mtu_size),
+                                                   negotiated_mtu_size,
+                                                   (i * negotiated_mtu_size));
+            }
+        }
+
+        bluetooth_app_state = READ_SPI_DATA;
+
+        break;
+    }
+    }
 }
 
 /**
@@ -415,7 +528,7 @@ void main_bluetooth_app(void)
 
     // GATT init
     {
-        APP_ERROR_CHECK(nrf_ble_gatt_init(&m_gatt, gatt_evt_handler));
+        APP_ERROR_CHECK(nrf_ble_gatt_init(&m_gatt, gatt_event_handler));
     }
 
     // Services init
@@ -504,7 +617,7 @@ void main_bluetooth_app(void)
                                      bluetooth_app_timer_handler));
 
     APP_ERROR_CHECK(app_timer_start(bluetooth_app_task,
-                                    APP_TIMER_TICKS(5000),
+                                    APP_TIMER_TICKS(1),
                                     NULL));
 
     // Initialise power management
