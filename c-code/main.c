@@ -132,7 +132,7 @@ static uint8_t image_buffer[1536];
  *        keeps track of that size so we can break the camera data into chunks
  *        according to this size.
  */
-uint16_t negotiated_mtu_size;
+static uint16_t negotiated_mtu_size;
 
 /**
  * @brief This struct holds the connection handles for our camera service.
@@ -144,6 +144,16 @@ typedef struct
     ble_gatts_char_handles_t char_handles;
     uint16_t conn_handle;
 } ble_service_t;
+
+/**
+ * @brief Flag we set when the Bluetooth is ready to send notifications.
+ */
+static bool bluetooth_ready = false;
+
+/**
+ * @brief Counter of how many chunks of data we have sent to the web app.
+ */
+static uint8_t chunks_sent = 0;
 
 /**
  * @brief Declare a global ble service variable here.
@@ -213,7 +223,7 @@ static void gatt_event_handler(nrf_ble_gatt_t *p_gatt,
     if (p_evt->evt_id == NRF_BLE_GATT_EVT_ATT_MTU_UPDATED)
     {
         LOG("MTU length set to: %d bytes", p_evt->params.att_mtu_effective);
-        negotiated_mtu_size = p_evt->params.att_mtu_effective;
+        negotiated_mtu_size = p_evt->params.att_mtu_effective - 3;
     }
 }
 
@@ -267,9 +277,7 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     case BLE_GAP_EVT_CONNECTED:
     {
         LOG("Connected");
-
         p_cus->conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
-
         break;
     }
 
@@ -277,9 +285,7 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     case BLE_GAP_EVT_DISCONNECTED:
     {
         LOG("Disconnected");
-
         p_cus->conn_handle = BLE_CONN_HANDLE_INVALID;
-
         break;
     }
 
@@ -288,24 +294,29 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     {
 
         LOG("PHY update request");
-
         ble_gap_phys_t const phys = {
             .rx_phys = BLE_GAP_PHY_AUTO,
             .tx_phys = BLE_GAP_PHY_AUTO,
         };
-
         APP_ERROR_CHECK(sd_ble_gap_phy_update(
             p_ble_evt->evt.gap_evt.conn_handle,
             &phys));
+        break;
+    }
 
+    // Once the notification is enabled, or data is sent, we can write data
+    case BLE_GATTS_EVT_WRITE:
+    case BLE_GATTS_EVT_HVN_TX_COMPLETE:
+    {
+        // TODO check if the endpoint is set to notifications correctly
+        bluetooth_ready = true;
         break;
     }
 
     // Disconnect on GATT Client timeout
     case BLE_GATTC_EVT_TIMEOUT:
     {
-        LOG("GATT Client Timeout");
-
+        LOG("GATT client Timeout");
         APP_ERROR_CHECK(sd_ble_gap_disconnect(
             p_ble_evt->evt.gattc_evt.conn_handle,
             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION));
@@ -316,8 +327,7 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     // Disconnect on GATT Server timeout
     case BLE_GATTS_EVT_TIMEOUT:
     {
-        LOG("GATT Server Timeout");
-
+        LOG("GATT server Timeout");
         APP_ERROR_CHECK(sd_ble_gap_disconnect(
             p_ble_evt->evt.gatts_evt.conn_handle,
             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION));
@@ -329,19 +339,17 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     case BLE_GATTS_EVT_SYS_ATTR_MISSING:
     {
         LOG("Updating system attributes");
-
         APP_ERROR_CHECK(sd_ble_gatts_sys_attr_set(
             p_ble_evt->evt.gatts_evt.conn_handle,
             NULL,
             0,
             0));
-
         break;
     }
 
     default:
     {
-        LOG("Unused BLE Event with ID: %d", p_ble_evt->header.evt_id);
+        LOG("Unused BLE event with ID: %d", p_ble_evt->header.evt_id);
         break;
     }
     }
@@ -378,11 +386,7 @@ void bluetooth_app_send_data_to_web_app(uint8_t packet_id,
     hvx_params.p_len = &length;
     hvx_params.type = BLE_GATT_HVX_NOTIFICATION;
 
-    LOG("Sending packet. ID:%d, size:%d, offset:%d", packet_id, negotiated_mtu_size, offset);
-
-    uint32_t status = sd_ble_gatts_hvx(ble_service.conn_handle, &hvx_params);
-
-    LOG("Send status: %d", status);
+    sd_ble_gatts_hvx(ble_service.conn_handle, &hvx_params);
 }
 
 static void bluetooth_app_timer_handler(void *p_context)
@@ -419,9 +423,10 @@ static void bluetooth_app_timer_handler(void *p_context)
     // Wait for an interrupt signal on FPGA_DONE_PIN before reading SPI data
     case READ_SPI_DATA:
     {
-        if (s1_fpga_is_booted())
+        // if (s1_fpga_is_booted()) // TODO enable this in the FPGA code
         {
             bluetooth_app_get_camera_data();
+            chunks_sent = 0;
             bluetooth_app_state = SEND_PACKETS;
         }
 
@@ -430,45 +435,46 @@ static void bluetooth_app_timer_handler(void *p_context)
 
     case SEND_PACKETS:
     {
-        uint8_t total_chunks = (uint8_t)ceil((float)sizeof(image_buffer) /
-                                             (float)negotiated_mtu_size);
-
-        for (uint8_t i = 0; i < total_chunks; i++)
+        if (bluetooth_ready)
         {
-            // TODO dont send data too fast
+            uint8_t total_chunks = (uint8_t)ceil((float)sizeof(image_buffer) /
+                                                 (float)negotiated_mtu_size);
 
-            // If first chunk
-            if (i == 0)
+            uint8_t id_flag;
+
+            // Set ID flag according to how many chunks have been sent
+            if (chunks_sent == 0)
             {
-                bluetooth_app_send_data_to_web_app(0,
-                                                   (uint8_t *)&image_buffer,
-                                                   negotiated_mtu_size,
-                                                   0);
+                id_flag = 0;
             }
-
-            // If last chunk
-            else if (i == total_chunks - 1)
+            else if (chunks_sent == total_chunks - 1)
             {
-                bluetooth_app_send_data_to_web_app(2,
-                                                   (uint8_t *)&image_buffer +
-                                                       (i * negotiated_mtu_size),
-                                                   negotiated_mtu_size,
-                                                   (i * negotiated_mtu_size));
+                id_flag = 2;
             }
-
-            // If middle chunks
             else
             {
-                bluetooth_app_send_data_to_web_app(1,
-                                                   (uint8_t *)&image_buffer +
-                                                       (i * negotiated_mtu_size),
-                                                   negotiated_mtu_size,
-                                                   (i * negotiated_mtu_size));
+                id_flag = 1;
             }
+
+            // Send data
+            bluetooth_app_send_data_to_web_app(id_flag,
+                                               (uint8_t *)&image_buffer +
+                                                   (chunks_sent * negotiated_mtu_size),
+                                               negotiated_mtu_size,
+                                               chunks_sent * negotiated_mtu_size);
+
+            // Increment chunk counter
+            chunks_sent++;
+
+            // Go back to waiting for interrupt when done
+            if (chunks_sent == total_chunks)
+            {
+                bluetooth_app_state = READ_SPI_DATA;
+            }
+
+            // Wait until this flag before run again
+            bluetooth_ready = false;
         }
-
-        bluetooth_app_state = READ_SPI_DATA;
-
         break;
     }
     }
@@ -483,7 +489,7 @@ static void bluetooth_app_timer_handler(void *p_context)
  */
 void main_bluetooth_app(void)
 {
-    LOG("Started Bluetooth application.");
+    LOG("Started bluetooth application.");
 
     // BLE stack init
     {
@@ -500,7 +506,7 @@ void main_bluetooth_app(void)
         // This will tell you how much RAM you need to configure in the linker
         // script. Set the value there accordingly. If you get a crash before
         // this, it means the ram is too low.
-        LOG("Softdevice RAM requirement should be: 0x%x", ram_start);
+        LOG("Softdevice RAM usage: 0x%x", ram_start);
     }
 
     // GAP parameters init
@@ -734,7 +740,7 @@ int main(void)
 {
     // View logs using the Segger JLinkRTTClient application
     LOG_CLEAR();
-    LOG("S1 Thermal camera demo – Built: %s %s – SDK Version: %s.",
+    LOG("S1 thermal camera demo – Built: %s %s – SDK Version: %s.",
         __DATE__,
         __TIME__,
         __S1_SDK_VERSION__);
