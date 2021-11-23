@@ -4,9 +4,9 @@ var downlinkCharacteristic = null;
 var uplinkCharacteristic = null;
 
 // UUIDs for services and characteristics
-var siliconwitcheryUUID = "48fd0000-184d-fe9e-e84d-bfc537115aab";
-var cameraService = "48fd1001-184d-fe9e-e84d-bfc537115aab";
-var cameraCharacteristic = "48fd1002-184d-fe9e-e84d-bfc537115aab";
+var siliconwitcheryUUID = "48fd0481-184d-fe9e-e84d-bfc537115aab";
+var cameraService = "48fd1000-184d-fe9e-e84d-bfc537115aab";
+var cameraCharacteristic = "48fd1001-184d-fe9e-e84d-bfc537115aab";
 
 // Promise function to check if bluetooth is availabe in the browser
 function isWebBluetoothAvailable() {

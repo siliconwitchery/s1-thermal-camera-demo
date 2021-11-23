@@ -28,9 +28,9 @@
  */
 
 #include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+// #include <stdio.h>
+// #include <stdlib.h>
+// #include <string.h>
 
 #include "nrf_strerror.h"
 #include "app_error.h"
@@ -100,13 +100,13 @@ static uint32_t flash_page_address = 0x000000;
  * @brief This value is appended to the Bluetooth base UUID and becomes the 
  * camera service UUID.
  */
-#define SERVICE_UUID 0x1001
+#define SERVICE_UUID 0x1000
 
 /**
  * @brief This value is appended to the Bluetooth base UUID and becomes the
  * camera characteristic UUID.
  */
-#define CHARACTERISTIC_UUID 0x1002
+#define CHARACTERISTIC_UUID 0x1001
 
 /**
  * @brief The payload size is negotiated by the receiving device. This variable
@@ -135,24 +135,25 @@ ble_service_t ble_service;
  * @brief We need a forward declaration of the ble event handler before 
  *        registering the observer.
  */
-static void ble_evt_handler(ble_evt_t const *p_ble_evt, void *p_context);
+static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context);
 
 /**
 * @brief This macro registers the Bluetooth service event handler to the stack.
 */
-NRF_SDH_BLE_OBSERVER(ble_service_obs, 2, ble_evt_handler, &ble_service);
+NRF_SDH_BLE_OBSERVER(ble_service_obs, 2, ble_event_handler, &ble_service);
 
 /**
  * @brief This large buffer stores the latest camera frame data
  */
-static uint8_t image_buffer[1536] = "hello there";
+static uint8_t image_buffer[1536];
 
 /**
  * @brief Clock event callback. Not used but we need to have it.
  */
 void clock_event_handler(nrfx_clock_evt_type_t event)
 {
-    // (void)event;
+    // We don't need the event variable so we can void it
+    (void)event;
 }
 
 /**
@@ -189,42 +190,40 @@ void get_image(void)
  */
 static void gatt_evt_handler(nrf_ble_gatt_t *p_gatt, nrf_ble_gatt_evt_t const *p_evt)
 {
-    // (void)p_gatt;
+    // We don't need the GATT pointer so we can void it
+    (void)p_gatt;
 
+    // If we receive an MTU update request, we can update the the MTU size
     if (p_evt->evt_id == NRF_BLE_GATT_EVT_ATT_MTU_UPDATED)
     {
-        LOG("MTU set to %d.", p_evt->params.att_mtu_effective);
+        LOG("MTU length set to: %d bytes", p_evt->params.att_mtu_effective);
         max_negotiated_buffer_size = p_evt->params.att_mtu_effective - 3;
     }
 }
 
 /**
- * @brief Advertising event handler that informs us which advertising mode we
- *        are in.
+ * @brief The advertising event handler that informs us which advertising mode
+ *        we are in.
  */
-static void on_adv_evt_handler(ble_adv_evt_t ble_adv_evt)
+static void advertising_event_handler(ble_adv_evt_t ble_adv_evt)
 {
     switch (ble_adv_evt)
     {
+    // We only use fast advertising in this example, but you can handle other
+    // states too
     case BLE_ADV_EVT_FAST:
-        LOG("[Info] Fast advertising.");
+        LOG("Fast advertising");
         break;
 
     case BLE_ADV_EVT_SLOW:
-        LOG("[Info] Slow advertising.");
-        break;
-
     case BLE_ADV_EVT_IDLE:
-        LOG("[Info] Advertising idle.");
-        break;
-
     case BLE_ADV_EVT_DIRECTED_HIGH_DUTY:
     case BLE_ADV_EVT_DIRECTED:
     case BLE_ADV_EVT_FAST_WHITELIST:
     case BLE_ADV_EVT_SLOW_WHITELIST:
     case BLE_ADV_EVT_WHITELIST_REQUEST:
     case BLE_ADV_EVT_PEER_ADDR_REQUEST:
-        LOG("[Info] Advertising other status.");
+        LOG("Unused advertising state");
         break;
     }
 }
@@ -233,96 +232,86 @@ static void on_adv_evt_handler(ble_adv_evt_t ble_adv_evt)
  * @brief Bluetooth event handler which informs us of connection status, new
  *        data, PHY update, as well as other things.
  */
-static void ble_evt_handler(ble_evt_t const *p_ble_evt, void *p_context)
+static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
 {
-
-    LOG("BLE Event: %d", p_ble_evt->header.evt_id);
 
     ble_service_t *p_cus = (ble_service_t *)p_context;
 
+    // Good practice to make sure the above pointers are valid
     if (p_cus == NULL || p_ble_evt == NULL)
     {
-        LOG("NULL");
+        LOG("BLE event handler called with invalid pointers");
         return;
     }
 
-    ret_code_t err_code;
-
     switch (p_ble_evt->header.evt_id)
     {
+
+    // When connected, set the connection handler
     case BLE_GAP_EVT_CONNECTED:
+    {
         LOG("Connected");
+        LOG("Con handler: %d", p_ble_evt->evt.gap_evt.conn_handle);
         p_cus->conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
         break;
+    }
 
+    // When disconnected, we reset the connection handler
     case BLE_GAP_EVT_DISCONNECTED:
+    {
         LOG("Disconnected");
         p_cus->conn_handle = BLE_CONN_HANDLE_INVALID;
         break;
+    }
 
-    case BLE_GATTS_EVT_WRITE:
-        LOG("Write event");
-        break;
-
+    // On a phy update request, we set the phy speed automatically
     case BLE_GAP_EVT_PHY_UPDATE_REQUEST:
     {
-        LOG("PHY update request.");
-        ble_gap_phys_t const phys =
-            {
-                .rx_phys = BLE_GAP_PHY_1MBPS,
-                .tx_phys = BLE_GAP_PHY_1MBPS,
-            };
-        err_code = sd_ble_gap_phy_update(p_ble_evt->evt.gap_evt.conn_handle, &phys);
-        APP_ERROR_CHECK(err_code);
+
+        LOG("PHY update request");
+        ble_gap_phys_t const phys = {
+            .rx_phys = BLE_GAP_PHY_AUTO,
+            .tx_phys = BLE_GAP_PHY_AUTO,
+        };
+        APP_ERROR_CHECK(sd_ble_gap_phy_update(p_ble_evt->evt.gap_evt.conn_handle,
+                                              &phys));
+        break;
     }
-    break;
 
+    // Disconnect on GATT Client timeout
     case BLE_GATTC_EVT_TIMEOUT:
-        // Disconnect on GATT Client timeout event.
-        LOG("GATT Client Timeout.");
-        err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle,
-                                         BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-        APP_ERROR_CHECK(err_code);
+    {
+        LOG("GATT Client Timeout");
+        APP_ERROR_CHECK(sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle,
+                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION));
         break;
+    }
 
+    // Disconnect on GATT Server timeout
     case BLE_GATTS_EVT_TIMEOUT:
-        // Disconnect on GATT Server timeout event.
-        LOG("GATT Server Timeout.");
-        err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
-                                         BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-        APP_ERROR_CHECK(err_code);
+    {
+        LOG("GATT Server Timeout");
+        APP_ERROR_CHECK(sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
+                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION));
         break;
+    }
 
+    // Updates system attributes after a new connection event
     case BLE_GATTS_EVT_SYS_ATTR_MISSING:
-        // No system attributes have been stored.
-        err_code = sd_ble_gatts_sys_attr_set(p_ble_evt->evt.gatts_evt.conn_handle, NULL, 0, 0);
-        APP_ERROR_CHECK(err_code);
-        break; // BLE_GATTS_EVT_SYS_ATTR_MISSING
-
-    case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
-        LOG("BLE_GAP_EVT_SEC_PARAMS_REQUEST");
+    {
+        LOG("Updating system attributes");
+        APP_ERROR_CHECK(sd_ble_gatts_sys_attr_set(p_ble_evt->evt.gatts_evt.conn_handle,
+                                                  NULL,
+                                                  0,
+                                                  0));
         break;
-
-    case BLE_GAP_EVT_AUTH_KEY_REQUEST:
-        LOG("BLE_GAP_EVT_AUTH_KEY_REQUEST");
-        break;
-
-    case BLE_GAP_EVT_LESC_DHKEY_REQUEST:
-        LOG("BLE_GAP_EVT_LESC_DHKEY_REQUEST");
-        break;
-
-    case BLE_GAP_EVT_AUTH_STATUS:
-        LOG("BLE_GAP_EVT_AUTH_STATUS: status=0x%x bond=0x%x lv4: %d kdist_own:0x%x kdist_peer:0x%x",
-            p_ble_evt->evt.gap_evt.params.auth_status.auth_status,
-            p_ble_evt->evt.gap_evt.params.auth_status.bonded,
-            p_ble_evt->evt.gap_evt.params.auth_status.sm1_levels.lv4,
-            *((uint8_t *)&p_ble_evt->evt.gap_evt.params.auth_status.kdist_own),
-            *((uint8_t *)&p_ble_evt->evt.gap_evt.params.auth_status.kdist_peer));
-        break;
+    }
 
     default:
-        // No implementation needed.
+    {
+        LOG("Unused BLE Event with ID: %d", p_ble_evt->header.evt_id);
         break;
+    }
     }
 }
 
@@ -331,34 +320,45 @@ static void ble_evt_handler(ble_evt_t const *p_ble_evt, void *p_context)
  */
 void send_camera_data(void)
 {
-
-    // TODO only send data if the connection is valid. Some reason this crashes
-
-    ble_gatts_hvx_params_t hvx_params = {0};
-
-    if (ble_service.conn_handle == BLE_CONN_HANDLE_INVALID)
-    {
-        return;
-    }
-
-    // TODO if this is too big
+    // TODO split this up
     uint16_t length = 10; // sizeof(image_buffer);
 
+    ble_gatts_hvx_params_t hvx_params = {0};
     hvx_params.handle = ble_service.char_handles.value_handle;
     hvx_params.p_data = (uint8_t *)&image_buffer;
     hvx_params.p_len = &length;
     hvx_params.type = BLE_GATT_HVX_NOTIFICATION;
 
-    APP_ERROR_CHECK(sd_ble_gatts_hvx(ble_service.conn_handle, &hvx_params));
+    sd_ble_gatts_hvx(ble_service.conn_handle, &hvx_params);
 }
 
 static void bluetooth_app_timer_handler(void *p_context)
 {
-    // We don't need the context pointer
-    // (void)p_context;
+    // We don't need the context pointer so we void it
+    (void)p_context;
 
-    LOG("Hi!");
     send_camera_data();
+
+    // // Wait for 1 second before reading back data§
+    // case WAIT_FOR_DATA:
+
+    //     start_image_rx_bus();
+
+    //     NRFX_DELAY_US(100000);
+
+    //     fpga_boot_state = DUMP_SPI;
+    //     break;
+
+    // // Dump data from FPGA over SPI
+    // case DUMP_SPI:
+    //     get_image();
+    //     for (uint32_t i = 0; i < 1536; i++)
+    //     {
+    //         LOG_RAW("0x%x, ", image_buffer[i]);
+    //     }
+    //     NRFX_DELAY_US(100000);
+
+    //     break;
 }
 
 /**
@@ -384,9 +384,10 @@ void main_bluetooth_app(void)
         // Enable BLE stack.
         APP_ERROR_CHECK(nrf_sdh_ble_enable(&ram_start));
 
-        // Register a handler for BLE events.
-        // TODO determine if we need this here
-        // NRF_SDH_BLE_OBSERVER(m_ble_observer, 3, ble_evt_handler, NULL);
+        // This will tell you how much RAM you need to configure in the linker
+        // script. Set the value there accordingly. If you get a crash before
+        // this, it means the ram is too low.
+        LOG("Softdevice RAM requirement should be: 0x%x", ram_start);
     }
 
     // GAP parameters init
@@ -401,7 +402,7 @@ void main_bluetooth_app(void)
 
         APP_ERROR_CHECK(sd_ble_gap_device_name_set(&sec_mode,
                                                    (const uint8_t *)device_name,
-                                                   strlen((const char *)device_name)));
+                                                   (uint16_t)strlen((const char *)device_name)));
 
         ble_gap_conn_params_t gap_conn_params = {0};
         gap_conn_params.min_conn_interval = MSEC_TO_UNITS(30, UNIT_1_25_MS);
@@ -474,7 +475,7 @@ void main_bluetooth_app(void)
         init.advdata.uuids_complete.p_uuids = adv_uuids;
 
         // This is the callback handler
-        init.evt_handler = on_adv_evt_handler;
+        init.evt_handler = advertising_event_handler;
 
         APP_ERROR_CHECK(ble_advertising_init(&m_advertising, &init));
 
@@ -487,8 +488,8 @@ void main_bluetooth_app(void)
     {
         ble_conn_params_init_t cp_init = {0};
         cp_init.p_conn_params = NULL;
-        cp_init.first_conn_params_update_delay = APP_TIMER_TICKS(5000); // Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (5 seconds)
-        cp_init.next_conn_params_update_delay = APP_TIMER_TICKS(30000); // Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds)
+        cp_init.first_conn_params_update_delay = APP_TIMER_TICKS(5000);
+        cp_init.next_conn_params_update_delay = APP_TIMER_TICKS(30000);
         cp_init.max_conn_params_update_count = 3;
         cp_init.disconnect_on_fail = true;
         cp_init.evt_handler = NULL;
@@ -518,11 +519,10 @@ void main_bluetooth_app(void)
 }
 
 /**
- * @brief Timer based state machine for flashing the FPGA
- *        image and booting the FPGA. As some of the flash
- *        operations take a lot of time, using a timer based
- *        state machine avoids the main thread hanging while
- *        waiting for flash operations to complete.
+ * @brief Timer based state machine for flashing the FPGA image and booting the 
+ *        FPGA. As some of the flash operations take a lot of time, using a 
+ *        timer based state machine avoids the main thread hanging while waiting
+ *        for flash operations to complete.
  */
 static void fpga_flasher_timer_handler(void *p_context)
 {
@@ -533,13 +533,16 @@ static void fpga_flasher_timer_handler(void *p_context)
     {
     // Configure power and erase the flash
     case STARTED:
+    {
         LOG("Erasing flash.");
         s1_flash_erase_all();
         fpga_flasher_state = ERASING;
         break;
+    }
 
     // Wait for erase to complete
     case ERASING:
+    {
         if (!s1_flash_is_busy())
         {
             flash_pages_remaining = (uint32_t)ceil((float)fpga_binfile_bin_len / 256.0f);
@@ -547,9 +550,11 @@ static void fpga_flasher_timer_handler(void *p_context)
             LOG("Flashing %d pages.", flash_pages_remaining);
         }
         break;
+    }
 
     // Flash every page until done
     case FLASHING:
+    {
         if (!s1_flash_is_busy())
         {
             s1_flash_page_from_image(flash_page_address, (unsigned char *)&fpga_binfile_bin);
@@ -565,31 +570,14 @@ static void fpga_flasher_timer_handler(void *p_context)
             break;
         }
         break;
+    }
 
-    // Stop the timer. We are done.
+    // Stop the timer. We are done
     case DONE:
+    {
         app_timer_stop(fpga_flasher_task);
         break;
-        // // Wait for 1 second before reading back data§
-        // case WAIT_FOR_DATA:
-
-        //     start_image_rx_bus();
-
-        //     NRFX_DELAY_US(100000);
-
-        //     fpga_boot_state = DUMP_SPI;
-        //     break;
-
-        // // Dump data from FPGA over SPI
-        // case DUMP_SPI:
-        //     get_image();
-        //     for (uint32_t i = 0; i < 1536; i++)
-        //     {
-        //         LOG_RAW("0x%x, ", image_buffer[i]);
-        //     }
-        //     NRFX_DELAY_US(100000);
-
-        //     break;
+    }
     }
 }
 
@@ -627,87 +615,40 @@ void main_fpga_flasher_app(void)
 }
 
 /**
- * @brief Main application entry for the fpga-blinky demo.
+ * @brief Main application entry.
  */
 int main(void)
 {
-    // Log some stuff about this project
+    // View logs using the Segger JLinkRTTClient application
     LOG_CLEAR();
     LOG("S1 Thermal camera demo – Built: %s %s – SDK Version: %s.",
         __DATE__,
         __TIME__,
         __S1_SDK_VERSION__);
 
-    // Initialise the S1 base settings
+    // Initialize the S1 base settings
     APP_ERROR_CHECK(s1_init());
 
-    // Initialise power and configuration settings
+    // Configuration power rail settings
     s1_pimc_fpga_vcore(true);
     s1_pmic_set_vio(2.8f);
     s1_pmic_set_vaux(3.3f);
+
+    // Reset the FPGA and wake up the flash IC
     s1_fpga_hold_reset();
     s1_flash_wakeup();
 
-    // Init the timer module
+    // Initialize the timer module
     APP_ERROR_CHECK(app_timer_init());
 
-    // Initialise the scheduler
-    APP_SCHED_INIT(APP_TIMER_SCHED_EVENT_DATA_SIZE, 20);
+    // Initialize the scheduler
+    APP_SCHED_INIT(APP_TIMER_SCHED_EVENT_DATA_SIZE, 10);
 
 #ifdef BLUETOOTH_ENABLED
-    // If we're in normal operating mode, run the bluetooth application main()
+    // If we're in normal operating mode, run the bluetooth side application
     main_bluetooth_app();
 #else
     // Otherwise run the FPGA flasher
     main_fpga_flasher_app();
 #endif
-}
-
-// Softdevice error handler. Set flag and reset
-void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name)
-{
-    LOG("[ERROR] BLE stack error at %s:%d", p_file_name, line_num);
-    nrf_delay_ms(500);
-    NRF_BREAKPOINT_COND;
-    NVIC_SystemReset();
-}
-
-void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
-{
-    switch (id)
-    {
-    case NRF_FAULT_ID_SDK_ASSERT:
-    {
-        assert_info_t *p_info = (assert_info_t *)info;
-        LOG("ASSERTION FAILED at %s:%u",
-            p_info->p_file_name,
-            p_info->line_num);
-        break;
-    }
-    case NRF_FAULT_ID_SDK_ERROR:
-    {
-        error_info_t *p_info = (error_info_t *)info;
-        LOG("ERROR %u [%s] at %s:%u\r\nPC at: 0x%08x",
-            p_info->err_code,
-            nrf_strerror_get((ret_code_t)p_info->err_code),
-            p_info->p_file_name,
-            p_info->line_num,
-            pc);
-        break;
-    }
-    default:
-        LOG("Other error at 0x%08X", pc);
-        break;
-    }
-
-    NRF_BREAKPOINT_COND;
-}
-
-// Hardfault handler. Set flag and reset
-void HardFault_Handler(void)
-{
-    LOG("[ERROR] CPU hardfault");
-    nrf_delay_ms(500);
-    NRF_BREAKPOINT_COND;
-    NVIC_SystemReset();
 }
