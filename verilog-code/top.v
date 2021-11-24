@@ -3,7 +3,7 @@
 `include "i2c_controller.v"
 `include "clock_divider.v"
 
-// Multiply this by posedge ticks to get MS delays
+// Multiply this by posedge ticks to get MS delays. Based on 24MHz clock
 `define US_TICKS 24
 
 module top (
@@ -15,21 +15,8 @@ module top (
     output wire D3,     // LED on S1 Popout. Used for status
     input  wire D4,     // Button on S1 Popout. Used for reset
     output wire D5,     // SDA pin on S1 Popout
-    output wire D6,     // SCL pin on S1 Popout
-    output wire D1,     // Test vector
-    output wire D2,
-    output wire D7,
-    output wire D8
+    output wire D6      // SCL pin on S1 Popout
 );
-
-    // Test signals
-    reg[4:0] test_vector;
-    assign D1 = test_vector[0];
-    assign D2 = test_vector[1];
-    assign D3 = test_vector[2];
-    assign D7 = test_vector[3]; 
-    assign D8 = test_vector[4];
-
     // Assign the SCL line to D6
     assign D6 = scl;
 
@@ -96,12 +83,20 @@ module top (
     wire [7:0] received_data; 
     reg enable_transfer;
 
-    // Variables related to camera data
-    reg [7:0] camera_rom [1664:0];          // Camera EEPROM data file
-    reg [7:0] pixel_buffer [1536:0];        // Complete camera pixel buffer
+    // Variables related to reading data from the camera
+    reg [7:0] camera_rom [1663:0];          // Camera EEPROM data file
+    reg [7:0] raw_pixel_buffer [1535:0];    // Pixels downloaded from camera
     integer camera_bytes_read = 0;          // How many bytes read so far
     reg camera_current_page = 0;            // Page 1 or 0 that is being read
     
+    // Variables for data processing and final camera data
+    integer pixels_processed = 0;           // Counter for processing pixels
+    reg data_processing_completed = 0;      // Goes high once data is ready
+    reg [7:0] output_pixel_buffer[3071:0];  // Final output buffer of floats
+
+    // Connect the data process complete flag to the interrupt pin
+    assign INT = data_processing_completed;
+
     // Variables for connecting the SPI controller to the camera frame buffer
     wire [13:0] spi_data_out_address;
     reg [7:0] spi_data_out;
@@ -118,7 +113,7 @@ module top (
 
     // Always provide the latest data to the SPI controller
     always @(posedge clk) begin
-        spi_data_out <= pixel_buffer[spi_data_out_address];
+        spi_data_out <= output_pixel_buffer[spi_data_out_address];
     end
 
     // General use delay counter
@@ -166,6 +161,9 @@ module top (
     localparam STATE_CAM_READ_PIXELS_BYTE_N         = 53;
     localparam STATE_CAM_READ_PIXELS_INC_N          = 54;
     localparam STATE_CAM_READ_PIXELS_DONE           = 55;
+
+    localparam STATE_PROCESS_DATA                   = 60;
+    localparam STATE_DATA_READY                     = 61;
 
     localparam STATE_I2C_ERROR                      = 255;
 
@@ -361,7 +359,8 @@ module top (
                 STATE_CAM_READ_ROM_INC_N: begin
 
                     // Save the received data into local memory
-                    camera_rom[camera_bytes_read] <= received_data;
+                    // Note we incremented before reading so we -1
+                    camera_rom[camera_bytes_read - 1] <= received_data;
 
                     // Read a total of 1664 bytes
                     state <= camera_bytes_read == 1664 
@@ -427,6 +426,9 @@ module top (
                 end
 
                 STATE_CAM_READ_STATUS_ADR_1: begin
+
+                    // Clear the data processing done flag
+                    data_processing_completed <= 0;
 
                     // Write the first byte of the status register address
                     read_write <= 0; 
@@ -559,10 +561,11 @@ module top (
                 STATE_CAM_READ_PIXELS_INC_N: begin
                 
                     // Save the received data into local memory
-                    pixel_buffer[camera_bytes_read] <= received_data;
+                    // Note we incremented before reading so we -1
+                    raw_pixel_buffer[camera_bytes_read - 1] <= received_data;
 
                     // Read a total of 1536 bytes
-                    state <= camera_bytes_read == 1536 
+                    state <= camera_bytes_read == 1536
                         ? STATE_CAM_READ_PIXELS_DONE
                         : STATE_CAM_READ_PIXELS_BYTE_N;
                 
@@ -575,8 +578,27 @@ module top (
                     issue_restart <= 0;
 
                     // Once I2C is idle again, we can read the status register
-                    if (idle == 1) state <= STATE_CAM_READ_STATUS_ADR_1;
+                    if (idle == 1) state <= STATE_PROCESS_DATA;
                 
+                end
+
+                STATE_PROCESS_DATA: begin
+
+                    // Can we do the majority of the processing in one cycle?
+
+                    // Copy raw_pixel_buffer[1535:0] => output_pixel_buffer[3071:0] as floats
+                    state <= STATE_DATA_READY;
+
+                end
+
+                STATE_DATA_READY: begin
+
+                    // Set the data processing done flag for one cycle
+                    data_processing_completed <= 1;
+
+                    // Go back to reading data
+                    state <= STATE_CAM_READ_STATUS_ADR_1;
+
                 end
 
                 STATE_I2C_ERROR: begin

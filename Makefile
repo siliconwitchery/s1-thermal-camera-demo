@@ -54,8 +54,8 @@ INC_FOLDERS += \
   $(NRF_SDK_PATH)/components/softdevice/s112/headers/nrf52 \
 
 # Use the S112 bluetooth stack linker file
-LINKER_FILE = c-code/thermal_camera_demo_linker.ld
-CFLAGS += -DBLUETOOTH_ENABLED
+# LINKER_FILE = c-code/thermal_camera_demo_linker.ld
+# CFLAGS += -DBLUETOOTH_ENABLED
 
 # Additional C flags
 CFLAGS += -DBLE_STACK_SUPPORT_REQD
@@ -97,6 +97,13 @@ sim-spi-controller:
 	@iverilog -Wall -Iverilog-code -o .sim/spi_controller_tb.out verilog-code/testbenches/spi_controller_tb.v
 	@vvp .sim/spi_controller_tb.out -lxt2
 	@gtkwave .sim/spi_controller_tb.lxt verilog-code/testbenches/spi_controller_tb.gtkw
+
+sim-uint16-to-float:
+	@mkdir -p $(SIM_DIRECTORY)
+	@echo "\n---\nSynthesizing with iVerilog.\n"
+	@iverilog -Wall -Iverilog-code -o .sim/uint16_to_float_tb.out verilog-code/testbenches/uint16_to_float_tb.v
+	@vvp .sim/uint16_to_float_tb.out -lxt2
+	@gtkwave .sim/uint16_to_float_tb.lxt verilog-code/testbenches/uint16_to_float_tb.gtkw
 
 # Remove the simulation folder
 clean-simulations:

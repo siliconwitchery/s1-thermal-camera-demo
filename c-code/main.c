@@ -437,7 +437,7 @@ static void bluetooth_app_timer_handler(void *p_context)
     // Wait for boot, and then initialize the SPI bus
     case INIT_SPI:
     {
-        // if (s1_fpga_is_booted()) // TODO uncomment me!!
+        if (s1_fpga_is_booted())
         {
             LOG("FPGA app started");
             bluetooth_app_init_fpga_spi();
@@ -449,9 +449,9 @@ static void bluetooth_app_timer_handler(void *p_context)
     // Wait for an interrupt signal on FPGA_DONE_PIN before reading SPI data
     case READ_SPI_DATA:
     {
-        // if (s1_fpga_is_booted()) // TODO enable this in the FPGA code
+        if (s1_fpga_is_booted())
         {
-            // bluetooth_app_get_camera_data();
+            bluetooth_app_get_camera_data();
             chunks_sent = 0;
             bluetooth_app_state = SEND_PACKETS;
         }
