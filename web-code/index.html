@@ -964,6 +964,7 @@
 
         // Function to update the pixel values
         function updatePixelGrid(pixelData) {
+            console.log(pixelData);
             // For each pixel "cell"
             pixels = document.getElementById("pixel-grid").getElementsByTagName("td");
             for (var pix = 0; pix < pixels.length; pix++) {
