@@ -59,13 +59,42 @@ async function connectDisconnect() {
     }
 }
 
+// Raw pixel data which comes in over bluetooth as uint8 bytes
+var rawDataArray = [];
+
+// The float converted pixels are stored in here
+var finalPixelArray = [];
+
 // Callback handling received data from bluetooth
 function dataNotificationHandler(event) {
 
-    // Decode the byte array into a string
-    const decoder = new TextDecoder('utf-8');
-    let value = event.target.value;
-    console.log(value);
+    // If the first byte is 1, then we reset the byte counter for a new frame
+    if (event.target.value.getUint8(0) == 0) {
+        rawDataArray = [];
+    }
 
-    // TODO parse the data to the pixel array
+    // While the array counter is less than the frame size, we copy data over
+    for (let i = 0; i < event.target.value.byteLength - 1; i++) {
+        rawDataArray.push(event.target.value.getUint8(1 + i))
+    }
+
+    // Once we get the first byte flag as 2, then we process the data
+    if (event.target.value.getUint8(0) == 2) {
+
+        // Create data view from the array
+        var uint8data = new DataView(new ArrayBuffer(rawDataArray.length));
+
+        // Set bytes
+        rawDataArray.forEach(function (b, i) {
+            uint8data.setUint8(i, b);
+        });
+
+        // Convert the raw data to floats 24*32 pixels is 768
+        for (let i = 0; i < 768; i++) {
+            // For every four bytes, copy uint8 as float
+            finalPixelArray[i] = uint8data.getFloat32(i * 4);
+        }
+
+        updatePixelGrid(finalPixelArray);
+    }
 }

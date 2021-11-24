@@ -104,7 +104,7 @@ static bluetooth_app_state_t bluetooth_app_state = BOOT_FPGA;
 /**
  * @brief Complete image frame buffer where we store the camera data from SPI.
  */
-static uint8_t image_buffer[1536];
+static uint8_t image_buffer[3072];
 
 /**
  * @brief The Bluetooth base UUID for the camera data service
@@ -198,7 +198,7 @@ void bluetooth_app_init_fpga_spi(void)
 }
 
 /**
- * @brief This function retrieves the image data from the FPGA over SPI
+ * @brief This function retrieves the image data from the FPGA over SPI.
  */
 void bluetooth_app_get_camera_data(void)
 {
@@ -208,6 +208,68 @@ void bluetooth_app_get_camera_data(void)
     nrfx_spim_t spi = NRFX_SPIM_INSTANCE(0);
 
     APP_ERROR_CHECK(nrfx_spim_xfer(&spi, &spi_xfer, 0));
+}
+
+/**
+ * @brief This function creates some dummy data which can be used for testing.
+ *        It populates the image_buffer with float values of 0.1, 0.2, 0.3, and
+ *        so on.
+ */
+static void bluetooth_app_form_dummy_data(void)
+{
+    for (uint16_t i = 0; i < 768; i++)
+    {
+        float dummy_float = 0.1f * i;
+
+        uint8_t bytes[4];
+        uint8_t reversed_bytes[4];
+
+        memcpy(&bytes, &dummy_float, sizeof(float));
+
+        reversed_bytes[0] = bytes[3];
+        reversed_bytes[1] = bytes[2];
+        reversed_bytes[2] = bytes[1];
+        reversed_bytes[3] = bytes[0];
+
+        memcpy(&image_buffer[i * 4], &reversed_bytes, 4);
+    }
+}
+
+/**
+ * @brief Pushes a chunk of camera frame data over bluetooth. Size of chunk is 
+ *        always negotiated_mtu_size.
+ * 
+ * @param packet_id: A number which determines if this is the first, mid or last 
+ *                   packet of the full image transfer. 0 means first, 1 means
+ *                   middle, and 2 means last.
+ * 
+ * @param data: Pointer to the data buffer.
+ * 
+ * @param len: Length of the data to send.
+ * 
+ * @param offset: What offset to send data from in the image_buffer.
+ */
+void bluetooth_app_send_data_to_web_app(uint8_t packet_id,
+                                        uint8_t *data,
+                                        uint16_t length,
+                                        uint16_t offset)
+{
+    uint8_t payload[NRF_SDH_BLE_GATT_MAX_MTU_SIZE];
+
+    payload[0] = packet_id;
+
+    memcpy(&payload[1], &data[offset], length);
+
+    // Add one to length because we added the packet ID byte
+    length += 1;
+
+    ble_gatts_hvx_params_t hvx_params = {0};
+    hvx_params.handle = ble_service.char_handles.value_handle;
+    hvx_params.p_data = (uint8_t *)&payload;
+    hvx_params.p_len = &length;
+    hvx_params.type = BLE_GATT_HVX_NOTIFICATION;
+
+    sd_ble_gatts_hvx(ble_service.conn_handle, &hvx_params);
 }
 
 /**
@@ -355,40 +417,6 @@ static void ble_event_handler(ble_evt_t const *p_ble_evt, void *p_context)
     }
 }
 
-/**
- * @brief Pushes a chunk of camera frame data over bluetooth. Size of chunk is 
- *        always negotiated_mtu_size.
- * 
- * @param packet_id: A number which determines if this is the first, mid or last 
- *                   packet of the full image transfer. 0 means first, 1 means
- *                   middle, and 2 means last.
- * 
- * @param data: Pointer to the data buffer.
- * 
- * @param len: Length of the data to send.
- * 
- * @param offset: What offset to send data from in the image_buffer.
- */
-void bluetooth_app_send_data_to_web_app(uint8_t packet_id,
-                                        uint8_t *data,
-                                        uint16_t length,
-                                        uint16_t offset)
-{
-    uint8_t payload[NRF_SDH_BLE_GATT_MAX_MTU_SIZE];
-
-    payload[0] = packet_id;
-
-    memcpy(&payload + 1, data + offset, length);
-
-    ble_gatts_hvx_params_t hvx_params = {0};
-    hvx_params.handle = ble_service.char_handles.value_handle;
-    hvx_params.p_data = (uint8_t *)&payload;
-    hvx_params.p_len = &length;
-    hvx_params.type = BLE_GATT_HVX_NOTIFICATION;
-
-    sd_ble_gatts_hvx(ble_service.conn_handle, &hvx_params);
-}
-
 static void bluetooth_app_timer_handler(void *p_context)
 {
     // We don't need the context pointer so we void it
@@ -400,18 +428,16 @@ static void bluetooth_app_timer_handler(void *p_context)
     case BOOT_FPGA:
     {
         LOG("Booting FPGA");
-
         s1_fpga_boot();
-
+        bluetooth_app_form_dummy_data();
         bluetooth_app_state = INIT_SPI;
-
         break;
     }
 
     // Wait for boot, and then initialize the SPI bus
     case INIT_SPI:
     {
-        if (s1_fpga_is_booted())
+        // if (s1_fpga_is_booted()) // TODO uncomment me!!
         {
             LOG("FPGA app started");
             bluetooth_app_init_fpga_spi();
@@ -425,7 +451,7 @@ static void bluetooth_app_timer_handler(void *p_context)
     {
         // if (s1_fpga_is_booted()) // TODO enable this in the FPGA code
         {
-            bluetooth_app_get_camera_data();
+            // bluetooth_app_get_camera_data();
             chunks_sent = 0;
             bluetooth_app_state = SEND_PACKETS;
         }
@@ -456,12 +482,11 @@ static void bluetooth_app_timer_handler(void *p_context)
                 id_flag = 1;
             }
 
-            // Send data
+            // Send data from image_buffer. Length is -1 because of the ID byte
             bluetooth_app_send_data_to_web_app(id_flag,
-                                               (uint8_t *)&image_buffer +
-                                                   (chunks_sent * negotiated_mtu_size),
-                                               negotiated_mtu_size,
-                                               chunks_sent * negotiated_mtu_size);
+                                               (uint8_t *)&image_buffer,
+                                               negotiated_mtu_size - 1,
+                                               (uint16_t)(chunks_sent * (negotiated_mtu_size - 1)));
 
             // Increment chunk counter
             chunks_sent++;
