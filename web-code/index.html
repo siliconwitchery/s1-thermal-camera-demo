@@ -79,7 +79,7 @@
                             </tr>
                             <tr>
                                 <td style="padding:0px;font-family:Verdana,Geneva,sans-serif;color:#000000;"> Updated
-                                    November 17th 2021</td>
+                                    November 24th 2021</td>
                             </tr>
                             <tr>
                                 <td style="padding:7px 0px 0px 0px;"><a href="https://www.siliconwitchery.com"><img
@@ -964,19 +964,11 @@
 
         // Function to update the pixel values
         function updatePixelGrid(pixelData) {
-            // Move all this into the function after the data is received
-            // The pixel grid as XY arrays for us to easily set cell colours with
-            var pixelGrid = document.getElementById("pixel-grid");
-            // var yPixels = pixelGrid.getElementsByTagName("tr");
-            var xPixels = null;
-
             // For each pixel "cell"
-            var pixelGrid = document.getElementById("pixel-grid");
-            pixels = pixelGrid.getElementsByTagName("td");
-            console.log(pixels.length);
+            pixels = document.getElementById("pixel-grid").getElementsByTagName("td");
             for (var pix = 0; pix < pixels.length; pix++) {
                 pixels[pix].style.backgroundColor =
-                    heatMapColorforValue(pixelData[pix] / 76.8);
+                    heatMapColorforValue(pixelData[pix] / 76.8); // TODO adjust the scaling according to max temperature
             }
         }
     </script>
