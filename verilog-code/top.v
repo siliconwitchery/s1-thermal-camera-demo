@@ -2,7 +2,7 @@
 `include "spi_controller.v"
 `include "i2c_controller.v"
 `include "clock_divider.v"
-`include "uint16_to_float.v"
+`include "int16_to_float.v"
 
 // Multiply this by posedge ticks to get MS delays. Based on 24MHz clock
 `define US_TICKS 24
@@ -45,6 +45,9 @@ module top (
         .CLKHF(clk)
     ) /* synthesis ROUTE_THROUGH_FABRIC=0 */;
 
+    // The LED is mostly for debugging. Assigned on D3
+    reg led = 0;
+    assign D3 = led;
 
     // -------------------------------------------------------------------------
     //
@@ -97,8 +100,8 @@ module top (
     reg read_write;                         // Flag for read or write modes
     reg [7:0] transmit_data;                // Data buffer for sending data
     wire [7:0] received_data;               // Data buffer for receiving data
-    reg enable_transfer;                    // Flag which starts the transfer
-    reg issue_restart;                      // Issues restart between transfers
+    reg enable_transfer = 0;                // Flag which starts the transfer
+    reg issue_restart = 0;                  // Issues restart between transfers
 
     // The camera EEPROM dump data with calibrations and offsets
     reg [7:0] camera_rom [1663:0];    
@@ -110,16 +113,13 @@ module top (
     integer camera_bytes_read;
 
     // This flag goes high after every read to trigger the data processing
-    reg raw_bytes_ready_to_process;
+    reg raw_bytes_ready_to_process = 0;
     
-    // General use delay counter
-    reg [31:0] delay_ticker;
-
     // I2C controller state variable
-    reg [7:0] camera_state = STATE_START;
+    reg [7:0] camera_state = STATE_CAMERA_START;
 
     // List of states for running the I2C controller logic
-    localparam STATE_START = 0;
+    localparam STATE_CAMERA_START                   = 0;
 
     localparam STATE_SET_CONTROL_REG_ADR_1          = 1;
     localparam STATE_SET_CONTROL_REG_ADR_2          = 2;
@@ -152,7 +152,6 @@ module top (
     localparam STATE_CAM_READ_STATUS_BYTE_1         = 43;
     localparam STATE_CAM_READ_STATUS_BYTE_2         = 44;
     localparam STATE_CAM_CHECK_STATUS               = 45;
-    localparam STATE_CAM_WAIT_FOR_PAGE              = 46;
 
     localparam STATE_CAM_READ_PIXELS_ADR_1          = 50;
     localparam STATE_CAM_READ_PIXELS_ADR_2          = 51;
@@ -178,7 +177,7 @@ module top (
         if (reset == 1) begin
 
             // Bring state back to the start
-            camera_state <= STATE_START;
+            camera_state <= STATE_CAMERA_START;
 
             // Disable transfers
             enable_transfer <= 0;
@@ -190,7 +189,6 @@ module top (
 
             // Clear the counters
             camera_bytes_read <= 0;
-            delay_ticker <= 0;
 
             // Clear the process ready flag
             raw_bytes_ready_to_process <= 0;
@@ -208,7 +206,7 @@ module top (
 
                 // Initial settings for the I2C communication to the camera
                 // and sending the first address byte of the ROM address
-                STATE_START: begin
+                STATE_CAMERA_START: begin
                     
                     // Chip address of the MLX90640 thermal camera
                     address <= 'h33;
@@ -376,7 +374,8 @@ module top (
                     enable_transfer <= 0;
                     issue_restart <= 0;
 
-                    // Once I2C is idle again, we can read the status register
+                    // Now we can go and clear the camera status register which
+                    // tells the camera to start the first conversion
                     if (idle == 1) camera_state <= STATE_CAM_RESET_STATUS_ADR_1;
 
                 end
@@ -387,6 +386,10 @@ module top (
                     enable_transfer <= 1;
 
                     transmit_data <= 'h80; 
+
+                    // Clear the ready flag because we might just have come from
+                    // the STATE_CAM_READ_PIXELS_DONE state
+                    raw_bytes_ready_to_process <= 0;
 
                     if_i2c_success(STATE_CAM_RESET_STATUS_ADR_2);
 
@@ -427,9 +430,6 @@ module top (
                 end
 
                 STATE_CAM_READ_STATUS_ADR_1: begin
-
-                    // Clear the data processor start flag
-                    raw_bytes_ready_to_process <= 0;
 
                     // Write the first byte of the status register address
                     read_write <= 0; 
@@ -481,40 +481,28 @@ module top (
                     // Stop the transfer
                     enable_transfer <= 0;
                     issue_restart <= 0;
-                    
-                    // Bit 0 tells us which page was read 
-                    // We don't use this currently, but it's here if needed
-                    //
-                    //  camera_current_page <= received_data[0];
-                    //
-                    // ---
 
-                    // Reset the delay ticker
-                    delay_ticker <= 0;
-
-                    // Wait to be done reading and I2C to become idle
+                    // Wait for idle and before checking the received_data
                     if (idle == 1) begin
 
-                        // Check if conversion is complete by checking bit 3,
-                        // as well as wait for the data processing to be done
-                        camera_state <= received_data[3] == 1 
-                            // && data_processing_completed == 1
-                            ? STATE_CAM_READ_PIXELS_ADR_1
-                            : STATE_CAM_WAIT_FOR_PAGE;
+                        // If we get the ready flag
+                        if (received_data[3] == 1'b1) begin
 
+                            // Wait for DSP operations to complete
+                            if (data_processing_completed == 1) begin
+
+                                // Then start reading pixels
+                                camera_state <= STATE_CAM_READ_PIXELS_ADR_1;
+
+                            end
+
+                        end
+
+                        // Otherwise keep checking the status register
+                        else camera_state <= STATE_CAM_READ_STATUS_ADR_1;
+                    
                     end
 
-                end
-
-                STATE_CAM_WAIT_FOR_PAGE: begin
-
-                    // Increment the delay ticker
-                    delay_ticker <= delay_ticker + 1;
-
-                    // Wait 1000ms us to check again
-                    if (delay_ticker == 1000000 * `US_TICKS) 
-                        camera_state <= STATE_CAM_READ_STATUS_ADR_1;
-                
                 end
 
                 STATE_CAM_READ_PIXELS_ADR_1: begin
@@ -586,9 +574,9 @@ module top (
                     // Flag that we are ready to start data processing
                     raw_bytes_ready_to_process <= 1;
 
-                    // Once I2C is idle again, we can process the data for SPI
-                    if (idle == 1) camera_state <= STATE_CAM_READ_STATUS_ADR_1;
-                
+                    // Once idle, we need to go reset the status register again
+                    if (idle == 1) camera_state <= STATE_CAM_RESET_STATUS_ADR_1;
+
                 end
 
                 STATE_I2C_ERROR: begin
@@ -624,22 +612,23 @@ module top (
     // -------------------------------------------------------------------------
 
     // Variables for the data processing and final camera data
-    integer bytes_loaded = 0;               // Counter for bytes loaded as uint16
-    integer bytes_saved = 0;                // Counter for bytes saved as float
-    reg data_processing_completed = 0;      // Goes high once data is ready
+    integer bytes_loaded;               // Counter for bytes loaded as int16
+    integer bytes_saved;                // Counter for bytes saved as float
+    reg data_processing_completed;      // Goes high once data is ready
 
     // Connect the data process complete flag to the interrupt pin
     assign INT = data_processing_completed;
 
-    // Intermediate registers for the uint16 to float conversion module
-    reg [15:0] uint_data_in;
+    // Intermediate registers for the int16 to float conversion module
+    reg [15:0] int_data_in;
     reg [31:0] float_data_out;
 
     // Instantiation and wiring up the module
-    // uint16_to_float uint16_to_float (
-    //     .uint(uint_data_in),
-    //     .float(float_data_out)
-    // );
+    int16_to_float int16_to_float (
+        .clk(clk),
+        .int_in(int_data_in),
+        .float_out(float_data_out)
+    );
 
     // Final output buffer
     reg [7:0] output_pixel_buffer[3071:0];  // Final output buffer of floats
@@ -655,7 +644,7 @@ module top (
     localparam STATE_DATA_WRITE_2           = 4;
     localparam STATE_DATA_WRITE_3           = 5;
     localparam STATE_DATA_WRITE_4           = 6;
-    localparam STATE_DATA_PROCESSED         = 2;
+    localparam STATE_DATA_PROCESSED         = 7;
 
     // The state machine itself
     always @(posedge clk) begin
@@ -664,7 +653,9 @@ module top (
         if (reset == 1) begin
 
             // Bring state back to the start
-            camera_state <= STATE_DATA_WAIT_FOR_START;
+            data_processor_state <= STATE_DATA_WAIT_FOR_START;
+
+            data_processing_completed <= 1;
 
             bytes_loaded <= 0;
             bytes_saved <= 0;
@@ -699,7 +690,7 @@ module top (
                     bytes_loaded <= bytes_loaded + 2;
 
                     // Read -2 to account for that when loading MSB
-                    uint_data_in[15:8] 
+                    int_data_in[15:8] 
                         <= raw_pixel_buffer[bytes_loaded - 2];
 
                     data_processor_state <= STATE_DATA_READ_LSB;
@@ -709,7 +700,7 @@ module top (
                 STATE_DATA_READ_LSB: begin
                     
                     // Then load the LSB
-                    uint_data_in[7:0] 
+                    int_data_in[7:0] 
                         <= raw_pixel_buffer[bytes_loaded - 1];
 
                     data_processor_state <= STATE_DATA_WRITE_1;
@@ -719,7 +710,7 @@ module top (
                 STATE_DATA_WRITE_1: begin
 
                     // Increment 4 bytes at a time for floats
-                    bytes_saved <= bytes_saved + 2;
+                    bytes_saved <= bytes_saved + 4;
 
                     output_pixel_buffer[bytes_saved - 4] 
                         <= float_data_out[31:24];
@@ -751,14 +742,14 @@ module top (
                     output_pixel_buffer[bytes_saved - 1] 
                         <= float_data_out[7:0];
 
-                    data_processor_state <= STATE_DATA_PROCESS;
+                    data_processor_state <= STATE_DATA_PROCESSED;
 
                 end
 
                 STATE_DATA_PROCESSED: begin
 
-                    // Process 3071 bytes for the full buffer
-                    if (bytes_saved < 3071) 
+                    // Process 1536 bytes for the full buffer
+                    if (bytes_loaded < 1536) 
                         data_processor_state <= STATE_DATA_READ_MSB;
                     
                     else

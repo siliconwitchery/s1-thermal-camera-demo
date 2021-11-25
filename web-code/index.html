@@ -969,7 +969,7 @@
             pixels = document.getElementById("pixel-grid").getElementsByTagName("td");
             for (var pix = 0; pix < pixels.length; pix++) {
                 pixels[pix].style.backgroundColor =
-                    heatMapColorforValue(pixelData[pix] / 76.8); // TODO adjust the scaling according to max temperature
+                    heatMapColorforValue(pixelData[pix] / -100.0); // TODO adjust the scaling according to max temperature
             }
         }
     </script>
