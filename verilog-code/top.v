@@ -595,11 +595,12 @@ module top (
 
     // Task for catching I2C errors and putting us into the error state
     task if_i2c_success(
-        input wire [7:0] next_state
+        input [7:0] next_state
     );
-
-        if (i2c_success == 1) camera_state <= next_state;
-        if (i2c_failure == 1) camera_state <= STATE_I2C_ERROR;
+        begin     
+            if (i2c_success == 1) camera_state <= next_state;
+            if (i2c_failure == 1) camera_state <= STATE_I2C_ERROR;
+        end
 
     endtask
 
@@ -621,7 +622,7 @@ module top (
 
     // Intermediate registers for the int16 to float conversion module
     reg [15:0] int_data_in;
-    reg [31:0] float_data_out;
+    wire [31:0] float_data_out;
 
     // Instantiation and wiring up the module
     int16_to_float int16_to_float (
@@ -640,11 +641,12 @@ module top (
     localparam STATE_DATA_WAIT_FOR_START    = 0;
     localparam STATE_DATA_READ_MSB          = 1;
     localparam STATE_DATA_READ_LSB          = 2;
-    localparam STATE_DATA_WRITE_1           = 3;
-    localparam STATE_DATA_WRITE_2           = 4;
-    localparam STATE_DATA_WRITE_3           = 5;
-    localparam STATE_DATA_WRITE_4           = 6;
-    localparam STATE_DATA_PROCESSED         = 7;
+    localparam STATE_WAIT_FOR_CONVERSION    = 3;
+    localparam STATE_DATA_WRITE_1           = 4;
+    localparam STATE_DATA_WRITE_2           = 5;
+    localparam STATE_DATA_WRITE_3           = 6;
+    localparam STATE_DATA_WRITE_4           = 7;
+    localparam STATE_DATA_PROCESSED         = 8;
 
     // The state machine itself
     always @(posedge clk) begin
@@ -703,6 +705,13 @@ module top (
                     int_data_in[7:0] 
                         <= raw_pixel_buffer[bytes_loaded - 1];
 
+                    data_processor_state <= STATE_WAIT_FOR_CONVERSION;
+
+                end
+
+                STATE_WAIT_FOR_CONVERSION: begin
+
+                    // Here we just wait one cycle for the data to convert
                     data_processor_state <= STATE_DATA_WRITE_1;
 
                 end

@@ -74,10 +74,12 @@ include s1-sdk/s1.mk
 # Build task for the verilog project
 build-verilog:
 	@mkdir -p $(OUTPUT_DIRECTORY)
+	@echo "\n---\nChecking with iverilog.\n"
+	@iverilog -Wall -Iverilog-code -o $(OUTPUT_DIRECTORY)/temp_top.out -i verilog-code/top.v
 	@echo "\n---\nSynthesizing.\n"
 	@yosys -p "synth_ice40 -json $(OUTPUT_DIRECTORY)/hardware.json" -q -Wall verilog-code/top.v
 	@echo "\n---\nPlace and route.\n"
-	@nextpnr-ice40 --up5k --package uwg30 --json $(OUTPUT_DIRECTORY)/hardware.json --asc $(OUTPUT_DIRECTORY)/hardware.asc --pcf s1-sdk/s1.pcf
+	@nextpnr-ice40 --up5k --package uwg30 -q --json $(OUTPUT_DIRECTORY)/hardware.json --asc $(OUTPUT_DIRECTORY)/hardware.asc --pcf s1-sdk/s1.pcf
 	@icepack $(OUTPUT_DIRECTORY)/hardware.asc $(OUTPUT_DIRECTORY)/fpga_binfile.bin
 	@cd $(OUTPUT_DIRECTORY) && xxd -i fpga_binfile.bin fpga_binfile_ram.h
 	@sed '1s/^/const /' $(OUTPUT_DIRECTORY)/fpga_binfile_ram.h > c-code/fpga_binfile.h
@@ -86,28 +88,28 @@ build-verilog:
 sim-i2c-controller:
 	@mkdir -p $(SIM_DIRECTORY)
 	@echo "\n---\nSynthesizing with iVerilog.\n"
-	@iverilog -Wall -Iverilog-code -o .sim/i2c_controller_tb.out verilog-code/testbenches/i2c_controller_tb.v
-	@vvp .sim/i2c_controller_tb.out -lxt2
-	@gtkwave .sim/i2c_controller_tb.lxt verilog-code/testbenches/i2c_controller_tb.gtkw
+	@iverilog -Wall -Iverilog-code -o $(SIM_DIRECTORY)/i2c_controller_tb.out verilog-code/testbenches/i2c_controller_tb.v
+	@vvp $(SIM_DIRECTORY)/i2c_controller_tb.out -lxt2
+	@gtkwave $(SIM_DIRECTORY)/i2c_controller_tb.lxt verilog-code/testbenches/i2c_controller_tb.gtkw
 
 # Build task to simulate the spi controller
 sim-spi-controller:
 	@mkdir -p $(SIM_DIRECTORY)
 	@echo "\n---\nSynthesizing with iVerilog.\n"
-	@iverilog -Wall -Iverilog-code -o .sim/spi_controller_tb.out verilog-code/testbenches/spi_controller_tb.v
-	@vvp .sim/spi_controller_tb.out -lxt2
-	@gtkwave .sim/spi_controller_tb.lxt verilog-code/testbenches/spi_controller_tb.gtkw
+	@iverilog -Wall -Iverilog-code -o $(SIM_DIRECTORY)/spi_controller_tb.out verilog-code/testbenches/spi_controller_tb.v
+	@vvp $(SIM_DIRECTORY)/spi_controller_tb.out -lxt2
+	@gtkwave $(SIM_DIRECTORY)/spi_controller_tb.lxt verilog-code/testbenches/spi_controller_tb.gtkw
 
 sim-int16-to-float:
 	@mkdir -p $(SIM_DIRECTORY)
 	@echo "\n---\nSynthesizing with iVerilog.\n"
-	@iverilog -Wall -Iverilog-code -o .sim/int16_to_float_tb.out verilog-code/testbenches/int16_to_float_tb.v
-	@vvp .sim/int16_to_float_tb.out -lxt2
-	@gtkwave .sim/int16_to_float_tb.lxt verilog-code/testbenches/int16_to_float_tb.gtkw
+	@iverilog -Wall -Iverilog-code -o $(SIM_DIRECTORY)/int16_to_float_tb.out verilog-code/testbenches/int16_to_float_tb.v
+	@vvp $(SIM_DIRECTORY)/int16_to_float_tb.out -lxt2
+	@gtkwave $(SIM_DIRECTORY)/int16_to_float_tb.lxt verilog-code/testbenches/int16_to_float_tb.gtkw
 
 # Remove the simulation folder
 clean-simulations:
-	rm -rf .sim
+	rm -rf $(SIM_DIRECTORY)
 
 # "make flash-s112-softdevice" will flash the bluetooth stack software to the nRF chip
 flash-s112-softdevice:
