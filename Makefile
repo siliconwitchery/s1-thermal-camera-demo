@@ -98,12 +98,12 @@ sim-spi-controller:
 	@vvp .sim/spi_controller_tb.out -lxt2
 	@gtkwave .sim/spi_controller_tb.lxt verilog-code/testbenches/spi_controller_tb.gtkw
 
-sim-uint16-to-float:
+sim-int16-to-float:
 	@mkdir -p $(SIM_DIRECTORY)
 	@echo "\n---\nSynthesizing with iVerilog.\n"
-	@iverilog -Wall -Iverilog-code -o .sim/uint16_to_float_tb.out verilog-code/testbenches/uint16_to_float_tb.v
-	@vvp .sim/uint16_to_float_tb.out -lxt2
-	@gtkwave .sim/uint16_to_float_tb.lxt verilog-code/testbenches/uint16_to_float_tb.gtkw
+	@iverilog -Wall -Iverilog-code -o .sim/int16_to_float_tb.out verilog-code/testbenches/int16_to_float_tb.v
+	@vvp .sim/int16_to_float_tb.out -lxt2
+	@gtkwave .sim/int16_to_float_tb.lxt verilog-code/testbenches/int16_to_float_tb.gtkw
 
 # Remove the simulation folder
 clean-simulations:
