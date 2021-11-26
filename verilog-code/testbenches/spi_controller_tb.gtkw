@@ -1,15 +1,15 @@
 [*]
 [*] GTKWave Analyzer v3.3.107 (w)1999-2020 BSI
-[*] Fri Nov 19 12:08:55 2021
+[*] Fri Nov 26 15:10:42 2021
 [*]
-[dumpfile] "/Users/raj/projects/verilog-i2c-controller/.sim/spi_controller_tb.lxt"
-[dumpfile_mtime] "Fri Nov 19 12:08:13 2021"
-[dumpfile_size] 3043
-[savefile] "/Users/raj/projects/verilog-i2c-controller/verilog-code/testbenches/spi_controller_tb.gtkw"
+[dumpfile] "/Users/raj/projects/s1-thermal-camera-demo/.sim/spi_controller_tb.lxt"
+[dumpfile_mtime] "Fri Nov 26 15:10:31 2021"
+[dumpfile_size] 7430
+[savefile] "/Users/raj/projects/s1-thermal-camera-demo/verilog-code/testbenches/spi_controller_tb.gtkw"
 [timestart] 0
 [size] 1440 790
 [pos] -1 -1
-*-13.163128 5730 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-14.756877 5730 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] spi_controller_tb.
 [sst_width] 193
 [signals_width] 227
@@ -30,11 +30,6 @@ spi_controller_tb.cipo[0]
 @22
 spi_controller_tb.spi_controller.bit_counter[3:0]
 spi_controller_tb.spi_controller.byte_counter[13:0]
-@28
-spi_controller_tb.spi_controller.sck_falling[0]
-spi_controller_tb.spi_controller.sck_rising[0]
-@29
-spi_controller_tb.spi_controller.cs_rising[0]
 @200
 -
 -Memory

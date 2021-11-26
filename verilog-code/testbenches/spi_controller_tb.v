@@ -27,7 +27,7 @@ module spi_controller_tb;
     wire cipo;
 
     // Dummy memory
-    reg [7:0] memory [9:0];
+    reg [7:0] memory [15:0];
 
     // Address selector
     wire [13:0] data_address;
@@ -53,7 +53,22 @@ module spi_controller_tb;
 
     // Pregen some data
     initial begin
-        for (integer i = 0; i < 10; i++) memory[i] = 1+i;
+        memory[0] = 'hFF;
+        memory[1] = 'hD4;
+        memory[2] = 'h01;
+        memory[3] = 'h23;
+        memory[4] = 'hFF;
+        memory[5] = 'hC9;
+        memory[6] = 'h01;
+        memory[7] = 'h23;
+        memory[8] = 'hFF;
+        memory[9] = 'hD5;
+        memory[10] = 'h01;
+        memory[11] = 'h24;
+        memory[12] = 'hFF;
+        memory[13] = 'hC7;
+        memory[14] = 'h01;
+        memory[15] = 'h23;
     end
 
     // The test routine is here
@@ -63,8 +78,8 @@ module spi_controller_tb;
         # (`SCK_PERIOD * 3);
         cs <= 1;
 
-        // Pull 5 bytes of data
-        # (`SCK_PERIOD * 5 * 8);
+        // Pull 16 bytes of data
+        # (`SCK_PERIOD * 16 * 8);
 
         // Send CS low again
         cs <= 0;

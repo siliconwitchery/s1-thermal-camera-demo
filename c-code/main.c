@@ -191,6 +191,7 @@ void bluetooth_app_init_fpga_spi(void)
     spi_config.miso_pin = SPI_SI_PIN;
     spi_config.sck_pin = SPI_CLK_PIN;
     spi_config.ss_pin = SPI_CS_PIN;
+    spi_config.frequency = NRF_SPIM_FREQ_1M;
 
     nrfx_spim_t spi = NRFX_SPIM_INSTANCE(0);
 
@@ -208,11 +209,6 @@ void bluetooth_app_get_camera_data(void)
     nrfx_spim_t spi = NRFX_SPIM_INSTANCE(0);
 
     APP_ERROR_CHECK(nrfx_spim_xfer(&spi, &spi_xfer, 0));
-
-    LOG("Data: ");
-
-    for (int i = 0; i < 24; i++)
-        LOG_RAW("%X, ", image_buffer[i]);
 }
 
 /**

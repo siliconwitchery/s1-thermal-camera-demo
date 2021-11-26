@@ -638,18 +638,16 @@ module top (
     reg [7:0] data_processor_state = STATE_DATA_WAIT_FOR_START;
 
     // List of data processor states
-    localparam STATE_DATA_WAIT_FOR_START    =  0;
-    localparam STATE_DATA_READ_MSB          =  1;
-    localparam STATE_DATA_READ_LSB          =  2;
-    localparam STATE_WAIT_FOR_CONVERSION_1  =  3;
-    localparam STATE_WAIT_FOR_CONVERSION_2  =  4;
-    localparam STATE_WAIT_FOR_CONVERSION_3  =  5;
-    localparam STATE_DATA_WRITE_1           =  6;
-    localparam STATE_DATA_WRITE_2           =  7;
-    localparam STATE_DATA_WRITE_3           =  8;
-    localparam STATE_DATA_WRITE_4           =  9;
-    localparam STATE_INCREMENT_COUNTERS     = 10;
-    localparam STATE_DATA_PROCESSED         = 11;
+    localparam STATE_DATA_WAIT_FOR_START    = 0;
+    localparam STATE_DATA_READ_MSB          = 1;
+    localparam STATE_DATA_READ_LSB          = 2;
+    localparam STATE_WAIT_FOR_CONVERSION_1  = 3;
+    localparam STATE_WAIT_FOR_CONVERSION_2  = 4;
+    localparam STATE_DATA_WRITE_1           = 5;
+    localparam STATE_DATA_WRITE_2           = 6;
+    localparam STATE_DATA_WRITE_3           = 7;
+    localparam STATE_DATA_WRITE_4           = 8;
+    localparam STATE_DATA_PROCESSED         = 9;
 
     // The state machine itself
     always @(posedge clk) begin
@@ -717,12 +715,6 @@ module top (
 
                 STATE_WAIT_FOR_CONVERSION_2: begin
 
-                    data_processor_state <= STATE_WAIT_FOR_CONVERSION_3;
-
-                end
-
-                STATE_WAIT_FOR_CONVERSION_3: begin
-
                     data_processor_state <= STATE_DATA_WRITE_1;
 
                 end
@@ -759,15 +751,6 @@ module top (
                     output_pixel_buffer[bytes_saved + 3] 
                         <= float_data_out[7:0];
 
-                    data_processor_state <= STATE_INCREMENT_COUNTERS;
-
-                end
-
-                STATE_INCREMENT_COUNTERS: begin
-
-                    bytes_loaded <= bytes_loaded + 2;
-                    bytes_saved <= bytes_saved + 4;
-
                     data_processor_state <= STATE_DATA_PROCESSED;
 
                 end
@@ -775,11 +758,15 @@ module top (
                 STATE_DATA_PROCESSED: begin
 
                     // Process 1536 bytes for the full buffer
-                    if (bytes_loaded < 8) 
+                    if (bytes_loaded < 1536 - 2) begin
+
+                        bytes_loaded <= bytes_loaded + 2;
+                        bytes_saved <= bytes_saved + 4;
                         data_processor_state <= STATE_DATA_READ_MSB;
 
-                    else 
-                        data_processor_state <= STATE_DATA_WAIT_FOR_START;
+                    end
+
+                    else data_processor_state <= STATE_DATA_WAIT_FOR_START;
 
                 end
                 

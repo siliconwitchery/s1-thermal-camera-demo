@@ -1,5 +1,7 @@
 module int16_to_float(
-    input wire clk,
+        // Convertor needs a clock and takes two periods for valid data
+        input wire clk,
+
         // Input should be a signed 16 bit integer
         input wire [15:0] int_in,
 
@@ -7,55 +9,44 @@ module int16_to_float(
         output reg [31:0] float_out
     );
 
-    // This signal holds the sign of the number
-    reg sign;
+    // This signal holds the sign of the input number. Just the MSB
+    wire sign;
+    assign sign = int_in[15];
 
-    // This signal represents the the absolute value of the input int_in
+    // This is the absolute value of the input. Uses 2's comp
     wire [15:0] unsigned_int;
+    assign unsigned_int = int_in[15] == 1 ? ~int_in + 1 : int_in ;
 
-    // This value represents the power of the exponent value
+    // The power of the exponent value will be stored here
     reg [7:0] power;
 
-    // Exponent and mantissa are used to build the final float_out value
+    // Exponent is 127 + the shifted power
     wire [7:0] exponent;
-    wire [15:0] mantissa;
-
-
-
-    // This assigns a two's compliment of int_in to unsigned_int
-    assign unsigned_int = sign == 1 ? ~int_in + 1 : int_in ;
-
-    // We assign the exponent and mantissa according to the power
     assign exponent = 127 + power;
+
+    // Mantissa is the remaining bits left justified
+    wire [15:0] mantissa;
     assign mantissa = unsigned_int << (16 - power);
+
+    // Loop variable for the for loop below
+    integer i;
 
     // Here we figure out the power of the exponent
     always @(posedge clk) begin
             
-        // Set the MSB to the sign wire
-        sign <= int_in[15];
+        for (i = 0; i < 16; i = i + 1) begin
 
-        if      (unsigned_int & ('b1000_0000_0000_0000)) power <= 15;
-        else if (unsigned_int & ('b0100_0000_0000_0000)) power <= 14;
-        else if (unsigned_int & ('b0010_0000_0000_0000)) power <= 13;
-        else if (unsigned_int & ('b0001_0000_0000_0000)) power <= 12;
-        else if (unsigned_int & ('b0000_1000_0000_0000)) power <= 11;
-        else if (unsigned_int & ('b0000_0100_0000_0000)) power <= 10;
-        else if (unsigned_int & ('b0000_0010_0000_0000)) power <=  9;
-        else if (unsigned_int & ('b0000_0001_0000_0000)) power <=  8;
-        else if (unsigned_int & ('b0000_0000_1000_0000)) power <=  7;
-        else if (unsigned_int & ('b0000_0000_0100_0000)) power <=  6;
-        else if (unsigned_int & ('b0000_0000_0010_0000)) power <=  5;
-        else if (unsigned_int & ('b0000_0000_0001_0000)) power <=  4;
-        else if (unsigned_int & ('b0000_0000_0000_1000)) power <=  3;
-        else if (unsigned_int & ('b0000_0000_0000_0100)) power <=  2;
-        else if (unsigned_int & ('b0000_0000_0000_0010)) power <=  1;
-        else if (unsigned_int & ('b0000_0000_0000_0001)) power <=  0;
+            if (unsigned_int & (1'b1 << i)) begin
+                power <= i;
+            end
 
-        // And finally save the value into the output reg. Note we have a
-        // special rule for if the input is zero
-        float_out <= unsigned_int == 0 ? 
-            0 : {sign, exponent[7:0], mantissa[15:0], 7'b0};
+        end
+
+        // Note we have a special rule if the input is zero, then output is too
+        if (unsigned_int == 0) float_out <= 0;
+
+        // The final output value will be valid on the second clock cycle
+        else float_out <= {sign, exponent[7:0], mantissa[15:0], 7'b0};
 
     end
 
