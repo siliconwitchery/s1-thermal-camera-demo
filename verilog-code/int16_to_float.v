@@ -8,7 +8,7 @@ module int16_to_float(
     );
 
     // This signal holds the sign of the number
-    wire sign;
+    reg sign;
 
     // This signal represents the the absolute value of the input int_in
     wire [15:0] unsigned_int;
@@ -20,8 +20,7 @@ module int16_to_float(
     wire [7:0] exponent;
     wire [15:0] mantissa;
 
-    // Assign the MSB to the sign wire
-    assign sign = int_in[15];
+
 
     // This assigns a two's compliment of int_in to unsigned_int
     assign unsigned_int = sign == 1 ? ~int_in + 1 : int_in ;
@@ -33,6 +32,9 @@ module int16_to_float(
     // Here we figure out the power of the exponent
     always @(posedge clk) begin
             
+        // Set the MSB to the sign wire
+        sign <= int_in[15];
+
         if      (unsigned_int & ('b1000_0000_0000_0000)) power <= 15;
         else if (unsigned_int & ('b0100_0000_0000_0000)) power <= 14;
         else if (unsigned_int & ('b0010_0000_0000_0000)) power <= 13;

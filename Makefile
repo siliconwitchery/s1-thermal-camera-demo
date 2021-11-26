@@ -54,8 +54,8 @@ INC_FOLDERS += \
   $(NRF_SDK_PATH)/components/softdevice/s112/headers/nrf52 \
 
 # Use the S112 bluetooth stack linker file
-# LINKER_FILE = c-code/thermal_camera_demo_linker.ld
-# CFLAGS += -DBLUETOOTH_ENABLED
+LINKER_FILE = c-code/thermal_camera_demo_linker.ld
+CFLAGS += -DBLUETOOTH_ENABLED
 
 # Additional C flags
 CFLAGS += -DBLE_STACK_SUPPORT_REQD
