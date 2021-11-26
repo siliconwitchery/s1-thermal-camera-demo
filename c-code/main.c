@@ -550,10 +550,10 @@ void main_bluetooth_app(void)
                                                    (uint16_t)strlen((const char *)device_name)));
 
         ble_gap_conn_params_t gap_conn_params = {0};
-        gap_conn_params.min_conn_interval = MSEC_TO_UNITS(30, UNIT_1_25_MS);
-        gap_conn_params.max_conn_interval = MSEC_TO_UNITS(45, UNIT_1_25_MS);
-        gap_conn_params.slave_latency = 0;
-        gap_conn_params.conn_sup_timeout = MSEC_TO_UNITS(4000, UNIT_10_MS);
+        gap_conn_params.min_conn_interval = MSEC_TO_UNITS(15, UNIT_1_25_MS);
+        gap_conn_params.max_conn_interval = MSEC_TO_UNITS(15, UNIT_1_25_MS);
+        gap_conn_params.slave_latency = 3;
+        gap_conn_params.conn_sup_timeout = MSEC_TO_UNITS(2000, UNIT_10_MS);
 
         APP_ERROR_CHECK(sd_ble_gap_ppcp_set(&gap_conn_params));
     }
@@ -634,7 +634,7 @@ void main_bluetooth_app(void)
         ble_conn_params_init_t cp_init = {0};
         cp_init.p_conn_params = NULL;
         cp_init.first_conn_params_update_delay = APP_TIMER_TICKS(5000);
-        cp_init.next_conn_params_update_delay = APP_TIMER_TICKS(30000);
+        cp_init.next_conn_params_update_delay = APP_TIMER_TICKS(10000);
         cp_init.max_conn_params_update_count = 3;
         cp_init.disconnect_on_fail = true;
         cp_init.evt_handler = NULL;
