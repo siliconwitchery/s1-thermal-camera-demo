@@ -607,10 +607,28 @@ module top (
 
     // -------------------------------------------------------------------------
     //
-    // State machine for processing camera sensor data into the final float 
-    // values.
+    // Signal processing state machine for converting camera sensor data into
+    // their final float values.
     //
     // -------------------------------------------------------------------------
+    //
+    // Offset calculation:
+    // 
+    //      pix[i,j] = offset_avg + occ_row_i * (1 << occ_scale_row)
+    //                            + occ_col_j * (1 << occ_scale_col) 
+    //                            + offset[i,j] * (1 << occ_scale_rem)
+    // -------------------------------------------------------------------------
+    // Average offset
+    wire [15:0] offset_average;
+    assign offset_average = {camera_rom[33], camera_rom[34]};
+
+    reg row;
+    reg col;
+
+    wire [3:0] occ_row;
+    assign occ_row = {camera_rom[36]}
+
+
 
     // Variables for the data processing and final camera data
     integer bytes_loaded;               // Counter for bytes loaded as int16
