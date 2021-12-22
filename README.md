@@ -12,7 +12,7 @@ To build and flash the application, you need to do the following steps. The easi
 ``` bash
 cp .vscode/tasks_template.jsonc .vscode/tasks.json
 ``` 
-and run the corresponding tasks from VSCode.
+and run the corresponding tasks from VSCode. Make sure the path variables point to the right install locations for your machine.
 
 ### Build FPGA binary:
 
