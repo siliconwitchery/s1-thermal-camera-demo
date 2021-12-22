@@ -1,0 +1,68 @@
+// VS Code run/build tasks.
+
+// Make a copy of this file and adjust it to your needs. NOTE: Be sure to 
+// rename the extension from .jsonc to .json
+
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build nRF code",
+            "command": "make",
+            "args": [
+                // For faster builds, set the number to how many cores you have.
+                "-j8",
+                // You can add argements which you'd like to pass to make.
+                "NRF_SDK_PATH=${HOME}/nRF5_SDK",
+                "GNU_INSTALL_ROOT=/Applications/ARM/bin/"
+            ],
+            "problemMatcher": "$gcc",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Build verilog code",
+            "command": "make",
+            "args": [
+                "build-verilog",
+                "NRF_SDK_PATH=${HOME}/nRF5_SDK",
+                "GNU_INSTALL_ROOT=/Applications/ARM/bin/"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Clean",
+            "command": "make",
+            "args": [
+                "clean",
+                "NRF_SDK_PATH=${HOME}/nRF5_SDK"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Reset the nRF chip",
+            "command": "make",
+            "args": [
+                "reset"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Make and flash project",
+            "command": "make",
+            "args": [
+                //"-j4", // For faster builds, set the number to your CPU core count
+                "flash",
+                "NRF_SDK_PATH=${HOME}/nRF5_SDK",
+                "GNU_INSTALL_ROOT=/Applications/ARM/bin/"
+            ],
+            "problemMatcher": "$gcc",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

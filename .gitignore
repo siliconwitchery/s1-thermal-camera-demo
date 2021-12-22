@@ -4,10 +4,10 @@
 
 # Don't keep local vscode settings
 .vscode/*
-!.vscode/c_cpp_properties-template.json
-!.vscode/launch-template.json
-!.vscode/settings-template.json
-!.vscode/tasks-template.json
+!.vscode/c_cpp_properties_template.jsonc
+!.vscode/launch_template.jsonc
+!.vscode/settings_template.jsonc
+!.vscode/tasks_template.jsonc
 
 # Don't include user workspace file
 *.code-workspace

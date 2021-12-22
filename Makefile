@@ -18,7 +18,7 @@
 # ------------------
 
 
-PROJECT_NAME = thermal_camera_demo
+PROJECT_NAME = s1_thermal_camera_demo
 
 # Put the nRF SDK path here. If you don't have it, download it here:
 # https://www.nordicsemi.com/Products/Development-software/nRF5-SDK
